@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Test project lives in Server.Tests/ with its own csproj; exclude from main build. -->
+    <Compile Remove="Server.Tests/**" />
+    <Content Remove="Server.Tests/**" />
+    <None Remove="Server.Tests/**" />
+    <EmbeddedResource Remove="Server.Tests/**" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="ClosedXML" Version="0.104.1" />
+    <!-- EPIC-002 M1/M3 — Postgres -->
+    <PackageReference Include="Npgsql" Version="8.0.3" />
+    <PackageReference Include="Dapper" Version="2.1.35" />
+    <!-- EPIC-002 M4 — Auth + Redis -->
+    <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.8" />
+    <PackageReference Include="StackExchange.Redis" Version="2.8.0" />
+  </ItemGroup>
+</Project>

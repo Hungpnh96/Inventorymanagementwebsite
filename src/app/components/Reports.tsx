@@ -57,7 +57,7 @@ export function Reports({ transactions }: ReportsProps) {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-3xl font-bold tracking-tight">Báo cáo thống kê</h2>
+        <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Báo cáo thống kê</h2>
         <p className="text-muted-foreground">Thống kê xuất nhập kho theo khoảng thời gian</p>
       </div>
 
@@ -148,17 +148,72 @@ export function Reports({ transactions }: ReportsProps) {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="rounded-md border overflow-x-auto">
+          {/* Mobile card list */}
+          <div className="md:hidden space-y-2">
+            {filteredTransactions.length === 0 ? (
+              <div className="rounded-md border bg-white px-4 py-8 text-center text-sm text-muted-foreground">
+                Không có giao dịch nào trong khoảng thời gian này
+              </div>
+            ) : (
+              filteredTransactions.map((transaction) => (
+                <div key={transaction.id} className="rounded-lg border bg-white p-3 shadow-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <span
+                      className={
+                        transaction.type === 'import'
+                          ? 'inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700'
+                          : 'inline-flex items-center rounded-full bg-orange-100 px-2.5 py-1 text-xs font-semibold text-orange-700'
+                      }
+                    >
+                      {transaction.type === 'import' ? '↓ Nhập' : '↑ Xuất'}
+                    </span>
+                    <span
+                      className={`font-bold text-base ${
+                        transaction.type === 'import' ? 'text-emerald-700' : 'text-orange-700'
+                      }`}
+                    >
+                      {transaction.type === 'import' ? '+' : '-'}
+                      {transaction.quantity}
+                    </span>
+                  </div>
+                  <div className="mt-2">
+                    <div className="font-medium text-slate-900 break-words">{transaction.tenSanPham}</div>
+                    <div className="font-mono text-xs text-indigo-700">{transaction.maSKU}</div>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
+                    <span>
+                      {new Date(transaction.date).toLocaleString('vi-VN', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
+                    <span>👤 {transaction.user}</span>
+                  </div>
+                  {transaction.note && (
+                    <div className="mt-1.5 rounded bg-slate-50 px-2 py-1 text-xs text-slate-600">
+                      {transaction.note}
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Desktop table */}
+          <div className="hidden md:block rounded-md border overflow-x-auto">
             <Table>
-              <TableHeader>
+              <TableHeader className="bg-slate-50">
                 <TableRow>
-                  <TableHead>Ngày</TableHead>
-                  <TableHead>Loại</TableHead>
-                  <TableHead>Mã SKU</TableHead>
-                  <TableHead>Sản phẩm</TableHead>
-                  <TableHead className="text-right">Số lượng</TableHead>
-                  <TableHead>Người thực hiện</TableHead>
-                  <TableHead>Ghi chú</TableHead>
+                  <TableHead className="font-semibold text-slate-700">Ngày</TableHead>
+                  <TableHead className="font-semibold text-slate-700">Loại</TableHead>
+                  <TableHead className="font-semibold text-slate-700">Mã SKU</TableHead>
+                  <TableHead className="font-semibold text-slate-700">Sản phẩm</TableHead>
+                  <TableHead className="text-right font-semibold text-slate-700">Số lượng</TableHead>
+                  <TableHead className="font-semibold text-slate-700">Người thực hiện</TableHead>
+                  <TableHead className="font-semibold text-slate-700">Ghi chú</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -170,8 +225,8 @@ export function Reports({ transactions }: ReportsProps) {
                   </TableRow>
                 ) : (
                   filteredTransactions.map((transaction) => (
-                    <TableRow key={transaction.id}>
-                      <TableCell>
+                    <TableRow key={transaction.id} className="hover:bg-indigo-50/40 transition-colors">
+                      <TableCell className="text-slate-600">
                         {new Date(transaction.date).toLocaleDateString('vi-VN', {
                           year: 'numeric',
                           month: '2-digit',
@@ -181,22 +236,29 @@ export function Reports({ transactions }: ReportsProps) {
                         })}
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          variant={transaction.type === 'import' ? 'default' : 'destructive'}
+                        <span
+                          className={
+                            transaction.type === 'import'
+                              ? 'inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700'
+                              : 'inline-flex items-center rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-semibold text-orange-700'
+                          }
                         >
-                          {transaction.type === 'import' ? 'Nhập' : 'Xuất'}
-                        </Badge>
+                          {transaction.type === 'import' ? '↓ Nhập' : '↑ Xuất'}
+                        </span>
                       </TableCell>
-                      <TableCell className="font-mono">{transaction.maSKU}</TableCell>
-                      <TableCell>{transaction.tenSanPham}</TableCell>
-                      <TableCell className={`text-right font-medium ${
-                        transaction.type === 'import' ? 'text-green-600' : 'text-red-600'
-                      }`}>
-                        {transaction.type === 'import' ? '+' : '-'}{transaction.quantity}
+                      <TableCell className="font-mono text-xs text-indigo-700">{transaction.maSKU}</TableCell>
+                      <TableCell className="font-medium">{transaction.tenSanPham}</TableCell>
+                      <TableCell
+                        className={`text-right font-semibold ${
+                          transaction.type === 'import' ? 'text-emerald-700' : 'text-orange-700'
+                        }`}
+                      >
+                        {transaction.type === 'import' ? '+' : '-'}
+                        {transaction.quantity}
                       </TableCell>
-                      <TableCell>{transaction.user}</TableCell>
-                      <TableCell className="max-w-xs truncate">
-                        {transaction.note || '-'}
+                      <TableCell className="text-slate-600">{transaction.user}</TableCell>
+                      <TableCell className="max-w-xs truncate text-slate-500">
+                        {transaction.note || '—'}
                       </TableCell>
                     </TableRow>
                   ))

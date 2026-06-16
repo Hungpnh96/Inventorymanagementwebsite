@@ -1,0 +1,53 @@
+.ast-graph/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Node / Vite
+node_modules/
+dist/
+.vite/
+*.log
+
+# .NET
+server/bin/
+server/obj/
+
+# Runtime data — never push to git (DB volume, Excel uploads, raw dumps)
+data/
+!data/.gitkeep
+data/*.xlsx
+data/*.xls
+data/inventory.xlsx
+data/inventory.xlsx.migrated-*
+data/postgres/
+data/redis/
+
+# DB dumps / backups (KEEP schema in server/Db/*.sql — those are code)
+*.dump
+*.dump.sql
+*.backup.sql
+*-backup.sql
+pgdata/
+postgres-data/
+redis-data/
+
+# Test screenshots from headless playwright runs
+/tmp/screens/
+test_*.py
+
+# Environment files — only `.env.example` is tracked
+.env
+.env.local
+.env.*.local
+
+# AI
+.aidlc
+.claude
+.moai

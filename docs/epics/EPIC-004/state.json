@@ -1,0 +1,104 @@
+{
+  "id": "EPIC-004",
+  "title": "Nâng cấp quản lý User",
+  "description": "- Thêm chức năng quản lý, thêm mới , cập nhật, xoá , đổi pass cho user\n- Thêm chức năng phân quyền cho user ( theo từng chức năng )",
+  "pipeline": "EPIC-004",
+  "agent": null,
+  "agents": [
+    "aidlc-po",
+    "aidlc-developer",
+    "aidlc-qa"
+  ],
+  "currentStep": 2,
+  "status": "done",
+  "createdAt": "2026-06-13T11:51:27.516Z",
+  "stepStates": [
+    {
+      "agent": "aidlc-po",
+      "status": "done",
+      "revision": 1,
+      "runStatus": "approved",
+      "startedAt": "2026-06-13T11:51:27.516Z",
+      "finishedAt": "2026-06-13T11:54:55.636Z",
+      "history": [
+        {
+          "kind": "approve",
+          "at": "2026-06-13T11:54:55.636Z",
+          "revision": 1
+        }
+      ],
+      "artifactsProduced": [
+        "docs/epics/EPIC-004/artifacts/PRD.md"
+      ]
+    },
+    {
+      "agent": "aidlc-developer",
+      "status": "done",
+      "revision": 2,
+      "runStatus": "approved",
+      "startedAt": "2026-06-13T12:11:03.688Z",
+      "finishedAt": "2026-06-13T12:15:26.861Z",
+      "feedback": "đang lỗi không thể thao tác. log HTTP 500, 403 ( không có thông báo gì cụ thể ).",
+      "autoReviewVerdict": {
+        "decision": "pass",
+        "reason": "No CI checks configured — add commands to .aidlc/validators/ci.mjs to enforce lint/typecheck/test.",
+        "at": "2026-06-13T12:15:25.725Z",
+        "runner": "/Users/hung/Documents/HungPNH/Work/ECom/Inventorymanagementwebsite/.aidlc/validators/ci.mjs"
+      },
+      "history": [
+        {
+          "kind": "auto_review",
+          "at": "2026-06-13T12:00:10.467Z",
+          "revision": 1,
+          "decision": "pass",
+          "reason": "No CI checks configured — add commands to .aidlc/validators/ci.mjs to enforce lint/typecheck/test.",
+          "runner": "/Users/hung/Documents/HungPNH/Work/ECom/Inventorymanagementwebsite/.aidlc/validators/ci.mjs"
+        },
+        {
+          "kind": "approve",
+          "at": "2026-06-13T12:00:13.475Z",
+          "revision": 1
+        },
+        {
+          "kind": "rerun",
+          "at": "2026-06-13T12:11:03.688Z",
+          "revision": 2,
+          "feedback": "đang lỗi không thể thao tác. log HTTP 500, 403 ( không có thông báo gì cụ thể )."
+        },
+        {
+          "kind": "auto_review",
+          "at": "2026-06-13T12:15:25.725Z",
+          "revision": 2,
+          "decision": "pass",
+          "reason": "No CI checks configured — add commands to .aidlc/validators/ci.mjs to enforce lint/typecheck/test.",
+          "runner": "/Users/hung/Documents/HungPNH/Work/ECom/Inventorymanagementwebsite/.aidlc/validators/ci.mjs"
+        },
+        {
+          "kind": "approve",
+          "at": "2026-06-13T12:15:26.861Z",
+          "revision": 2
+        }
+      ],
+      "artifactsProduced": []
+    },
+    {
+      "agent": "aidlc-qa",
+      "status": "done",
+      "revision": 1,
+      "runStatus": "approved",
+      "startedAt": "2026-06-13T12:15:26.861Z",
+      "finishedAt": "2026-06-13T12:29:26.629Z",
+      "history": [
+        {
+          "kind": "approve",
+          "at": "2026-06-13T12:29:26.629Z",
+          "revision": 1
+        }
+      ],
+      "artifactsProduced": [
+        "docs/epics/EPIC-004/artifacts/TEST-SCRIPT.md"
+      ]
+    }
+  ],
+  "updatedAt": "2026-06-13T12:29:26.629Z"
+}

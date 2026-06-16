@@ -1,0 +1,84 @@
+{
+  "id": "EPIC-002",
+  "title": "Nâng cấp hệ thống quản lý nhân sự, công nghệ",
+  "description": "- dùng CSDL để kiểm soát hệ thống ( dùng database postgres để lưu trữ ). trên cấu hình luôn file docker run để install DB nếu chưa có ( cũng thêm vào file gitignore để tránh push data lên server ). Vẫn cho phép import/xuất excel nhé. sau khi có dữ liệu thì convert và ghi nhận vào CSDL đúng format. \n- chuyển file dữ liệu lưu trữ trên excel thành lưu trên CSDL postgres\n- Thiết kế lại phần phân quyền ( admin/user ). thêm redis để cache login . khi đã logout cần clear hết session. role admin \n+ quản lý thêm / xoá user\n+ quản lý phân quyền menu cho từng user thao tác ( xem , thêm , xoá , sửa , cập nhật ) \n+ admin reset pass cho user \n- Toàn bộ lịch sử thao tác ( theo account ) phải ghi nhận lại trên toàn bộ hệ thống. \n- Dashboard cần thêm chút màu sắc để bắt mắt hơn. \n- Thanh menu cần cố định ở dạng laptop ( không di chuyển khi roll chung với chức năng )\n-",
+  "pipeline": "EPIC-002",
+  "agent": null,
+  "agents": [
+    "aidlc-po",
+    "aidlc-developer",
+    "aidlc-qa"
+  ],
+  "currentStep": 2,
+  "status": "done",
+  "createdAt": "2026-06-13T09:14:24.600Z",
+  "stepStates": [
+    {
+      "agent": "aidlc-po",
+      "status": "done",
+      "revision": 1,
+      "runStatus": "approved",
+      "startedAt": "2026-06-13T09:14:24.600Z",
+      "finishedAt": "2026-06-13T09:37:09.338Z",
+      "history": [
+        {
+          "kind": "approve",
+          "at": "2026-06-13T09:37:09.338Z",
+          "revision": 1
+        }
+      ],
+      "artifactsProduced": [
+        "docs/epics/EPIC-002/artifacts/PRD.md"
+      ]
+    },
+    {
+      "agent": "aidlc-developer",
+      "status": "done",
+      "revision": 1,
+      "runStatus": "approved",
+      "startedAt": "2026-06-13T09:37:09.338Z",
+      "finishedAt": "2026-06-13T09:45:08.160Z",
+      "autoReviewVerdict": {
+        "decision": "pass",
+        "reason": "No CI checks configured — add commands to .aidlc/validators/ci.mjs to enforce lint/typecheck/test.",
+        "at": "2026-06-13T09:45:06.385Z",
+        "runner": "/Users/hung/Documents/HungPNH/Work/ECom/Inventorymanagementwebsite/.aidlc/validators/ci.mjs"
+      },
+      "history": [
+        {
+          "kind": "auto_review",
+          "at": "2026-06-13T09:45:06.385Z",
+          "revision": 1,
+          "decision": "pass",
+          "reason": "No CI checks configured — add commands to .aidlc/validators/ci.mjs to enforce lint/typecheck/test.",
+          "runner": "/Users/hung/Documents/HungPNH/Work/ECom/Inventorymanagementwebsite/.aidlc/validators/ci.mjs"
+        },
+        {
+          "kind": "approve",
+          "at": "2026-06-13T09:45:08.160Z",
+          "revision": 1
+        }
+      ],
+      "artifactsProduced": []
+    },
+    {
+      "agent": "aidlc-qa",
+      "status": "done",
+      "revision": 1,
+      "runStatus": "approved",
+      "startedAt": "2026-06-13T09:45:08.160Z",
+      "finishedAt": "2026-06-13T09:48:35.150Z",
+      "history": [
+        {
+          "kind": "approve",
+          "at": "2026-06-13T09:48:35.150Z",
+          "revision": 1
+        }
+      ],
+      "artifactsProduced": [
+        "docs/epics/EPIC-002/artifacts/TEST-SCRIPT.md"
+      ]
+    }
+  ],
+  "updatedAt": "2026-06-13T09:48:35.150Z"
+}

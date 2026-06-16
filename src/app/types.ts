@@ -21,9 +21,12 @@ export interface Transaction {
   user: string;
 }
 
+export type PermissionMatrix = Record<string, Record<string, boolean>>;
+
 export interface User {
   username: string;
   role: 'admin' | 'user';
+  permissions?: PermissionMatrix;
 }
 
 export interface InventoryData {

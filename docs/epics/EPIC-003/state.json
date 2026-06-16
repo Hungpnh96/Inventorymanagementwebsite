@@ -1,0 +1,161 @@
+{
+  "id": "EPIC-003",
+  "title": "Reupdate EPIC-002",
+  "description": "Kiểm tra lại EPIC-002 và start lại. Tôi chỉ mới run bằng tay code chuyển postgres thôi. còn lại tôi thấy vẫn chưa hoạt động",
+  "pipeline": "EPIC-003",
+  "agent": null,
+  "agents": [
+    "aidlc-po",
+    "aidlc-tech-lead",
+    "aidlc-qa",
+    "aidlc-developer",
+    "aidlc-qa",
+    "aidlc-qa"
+  ],
+  "currentStep": 2,
+  "status": "in_progress",
+  "createdAt": "2026-06-13T10:36:29.596Z",
+  "stepStates": [
+    {
+      "agent": "aidlc-po",
+      "status": "done",
+      "revision": 2,
+      "runStatus": "approved",
+      "startedAt": "2026-06-13T11:22:04.210Z",
+      "finishedAt": "2026-06-13T11:26:04.027Z",
+      "feedback": "replan",
+      "history": [
+        {
+          "kind": "approve",
+          "at": "2026-06-13T10:45:05.317Z",
+          "revision": 1
+        },
+        {
+          "kind": "rerun",
+          "at": "2026-06-13T11:22:04.210Z",
+          "revision": 2,
+          "feedback": "replan"
+        },
+        {
+          "kind": "approve",
+          "at": "2026-06-13T11:26:04.027Z",
+          "revision": 2
+        }
+      ],
+      "artifactsProduced": [
+        "docs/epics/EPIC-003/artifacts/PRD.md"
+      ]
+    },
+    {
+      "agent": "aidlc-tech-lead",
+      "status": "done",
+      "revision": 2,
+      "runStatus": "approved",
+      "startedAt": "2026-06-13T11:26:04.027Z",
+      "finishedAt": "2026-06-13T11:29:21.999Z",
+      "feedback": "replan",
+      "history": [
+        {
+          "kind": "approve",
+          "at": "2026-06-13T10:50:08.791Z",
+          "revision": 1
+        },
+        {
+          "kind": "rerun",
+          "at": "2026-06-13T11:21:03.318Z",
+          "revision": 2,
+          "feedback": "replan"
+        },
+        {
+          "kind": "approve",
+          "at": "2026-06-13T11:29:21.999Z",
+          "revision": 2
+        }
+      ],
+      "artifactsProduced": [
+        "docs/epics/EPIC-003/artifacts/TECH-DESIGN.md"
+      ]
+    },
+    {
+      "agent": "aidlc-qa",
+      "status": "in_progress",
+      "revision": 1,
+      "runStatus": "awaiting_work",
+      "startedAt": "2026-06-13T11:26:04.027Z",
+      "finishedAt": null,
+      "history": [],
+      "artifactsProduced": []
+    },
+    {
+      "agent": "aidlc-developer",
+      "status": "done",
+      "revision": 2,
+      "runStatus": "approved",
+      "startedAt": "2026-06-13T11:29:21.999Z",
+      "finishedAt": "2026-06-13T11:44:46.257Z",
+      "feedback": "re plan",
+      "autoReviewVerdict": {
+        "decision": "pass",
+        "reason": "No CI checks configured — add commands to .aidlc/validators/ci.mjs to enforce lint/typecheck/test.",
+        "at": "2026-06-13T11:44:45.058Z",
+        "runner": "/Users/hung/Documents/HungPNH/Work/ECom/Inventorymanagementwebsite/.aidlc/validators/ci.mjs"
+      },
+      "history": [
+        {
+          "kind": "auto_review",
+          "at": "2026-06-13T10:56:35.614Z",
+          "revision": 1,
+          "decision": "pass",
+          "reason": "No CI checks configured — add commands to .aidlc/validators/ci.mjs to enforce lint/typecheck/test.",
+          "runner": "/Users/hung/Documents/HungPNH/Work/ECom/Inventorymanagementwebsite/.aidlc/validators/ci.mjs"
+        },
+        {
+          "kind": "approve",
+          "at": "2026-06-13T10:56:37.218Z",
+          "revision": 1
+        },
+        {
+          "kind": "rerun",
+          "at": "2026-06-13T11:20:49.419Z",
+          "revision": 2,
+          "feedback": "re plan"
+        },
+        {
+          "kind": "auto_review",
+          "at": "2026-06-13T11:44:45.058Z",
+          "revision": 2,
+          "decision": "pass",
+          "reason": "No CI checks configured — add commands to .aidlc/validators/ci.mjs to enforce lint/typecheck/test.",
+          "runner": "/Users/hung/Documents/HungPNH/Work/ECom/Inventorymanagementwebsite/.aidlc/validators/ci.mjs"
+        },
+        {
+          "kind": "approve",
+          "at": "2026-06-13T11:44:46.257Z",
+          "revision": 2
+        }
+      ],
+      "artifactsProduced": []
+    },
+    {
+      "agent": "aidlc-qa",
+      "status": "pending",
+      "revision": 1,
+      "runStatus": "pending",
+      "startedAt": null,
+      "finishedAt": null,
+      "history": [],
+      "artifactsProduced": []
+    },
+    {
+      "agent": "aidlc-qa",
+      "status": "pending",
+      "revision": 1,
+      "runStatus": "pending",
+      "startedAt": null,
+      "finishedAt": null,
+      "history": [],
+      "artifactsProduced": []
+    }
+  ],
+  "updatedAt": "2026-06-13T11:44:46.257Z"
+}

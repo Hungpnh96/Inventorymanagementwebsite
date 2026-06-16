@@ -1,0 +1,14 @@
+node_modules
+dist
+.git
+.gitignore
+.claude
+.moai
+.vscode
+.idea
+*.log
+README.md
+ATTRIBUTIONS.md
+guidelines
+server
+data
