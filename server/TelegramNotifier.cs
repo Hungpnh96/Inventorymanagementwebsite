@@ -7,6 +7,7 @@ public enum TelegramEvent
     UserCreate,
     PasswordReset,
     PermissionRequest,
+    LowStock,
 }
 
 /// <summary>
@@ -47,6 +48,7 @@ public sealed class TelegramNotifier
                 TelegramEvent.UserCreate => cfg.NotifyUserCreate,
                 TelegramEvent.PasswordReset => cfg.NotifyPasswordReset,
                 TelegramEvent.PermissionRequest => cfg.NotifyPermissionRequest,
+                TelegramEvent.LowStock => cfg.NotifyLowStock,
                 _ => false,
             };
             if (!enabled) return;

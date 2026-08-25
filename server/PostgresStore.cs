@@ -164,7 +164,7 @@ public class PostgresStore
         await tx.CommitAsync();
     }
 
-    public async Task<Transaction> RecordTransactionAsync(TransactionRequest body, string username, bool isAdmin)
+    public async Task<TransactionResult> RecordTransactionAsync(TransactionRequest body, string username, bool isAdmin)
     {
         using var c = await _db.OpenAsync();
         using var tx = await c.BeginTransactionAsync();
@@ -178,10 +178,13 @@ public class PostgresStore
 
         string tenSanPham;
         double unitPrice;
+        // Hoisted so the post-write stock level is still in scope at the return statement
+        // (callers need before/after to detect a low-stock threshold crossing).
+        double newStock;
         if (existing.HasValue)
         {
             var (id, ton, gia, name) = existing.Value;
-            double newStock = body.Type == "import" ? ton + body.Quantity : ton - body.Quantity;
+            newStock = body.Type == "import" ? ton + body.Quantity : ton - body.Quantity;
             if (body.Type == "export" && body.Quantity > ton)
                 throw new InvalidOperationException("Số lượng xuất vượt quá tồn kho");
 
@@ -221,7 +224,7 @@ public class PostgresStore
             if (body.Type == "export")
                 throw new InvalidOperationException("Sản phẩm không tồn tại trong kho");
             var np = body.NewProduct ?? new Product(0, "", body.MaSKU, body.TenSanPham, "", 0, 0, 0);
-            double newStock = body.Quantity;
+            newStock = body.Quantity;
             unitPrice = body.UnitPrice ?? np.GiaVon;
             await c.ExecuteAsync(@"
                 INSERT INTO products (stt, loai_hang, ma_sku, ten_san_pham, don_vi_tinh, ton_kho, gia_von, gia_tri_kho)
@@ -259,7 +262,10 @@ public class PostgresStore
             txn, tx);
 
         await tx.CommitAsync();
-        return txn;
+        return new TransactionResult(
+            txn,
+            StockBefore: existing.HasValue ? existing.Value.ton_kho : 0,
+            StockAfter: newStock);
     }
 
     public async Task<List<PriceHistoryRow>> GetPriceHistoryAsync(string sku)

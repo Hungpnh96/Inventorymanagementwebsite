@@ -23,9 +23,17 @@ import { FAB } from './components/ui-ext/FAB';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Plus } from 'lucide-react';
 import { ThemeProvider } from './design/ThemeProvider';
+import { STOCK_LOW_THRESHOLD } from './design/status-colors';
 import { User, InventoryData, Transaction, Product } from './types';
 import { saveToken, loadToken } from './utils/storage';
-import { fetchInventory, fetchMe, logout as apiLogout, LoginResult } from './utils/api';
+import {
+  fetchInventory,
+  fetchMe,
+  getGeneralSettings,
+  logout as apiLogout,
+  LoginResult,
+  type GeneralSettings,
+} from './utils/api';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner';
 
@@ -47,6 +55,21 @@ function AppInner() {
   const [bootstrapping, setBootstrapping] = useState(true);
   const [mustChangePassword, setMustChangePassword] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
+  // Seeded with the static default so every screen has a sane threshold before the
+  // server value arrives — the fetch below never blocks the inventory load.
+  const [generalSettings, setGeneralSettings] = useState<GeneralSettings>({
+    language: 'vi',
+    lowStockThreshold: STOCK_LOW_THRESHOLD,
+  });
+
+  /** Fire-and-forget: readable by any logged-in user, and a failure just keeps the default. */
+  const refreshGeneralSettings = useCallback(() => {
+    getGeneralSettings()
+      .then(setGeneralSettings)
+      .catch(() => {
+        /* keep the fallback threshold — this setting is not worth a toast */
+      });
+  }, []);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -78,6 +101,7 @@ function AppInner() {
           setCurrentUser(me.user);
           setMustChangePassword(me.mustChangePassword);
           if (me.mustChangePassword) setShowChangePassword(true);
+          refreshGeneralSettings(); // in parallel with the inventory load, not before it
           await refresh();
         } else {
           saveToken(null);
@@ -88,7 +112,7 @@ function AppInner() {
         setBootstrapping(false);
       }
     })();
-  }, [refresh]);
+  }, [refresh, refreshGeneralSettings]);
 
   const handleLogin = (result: LoginResult) => {
     saveToken(result.token);
@@ -98,6 +122,7 @@ function AppInner() {
       setShowChangePassword(true);
       toast.message('Cần đổi mật khẩu trước khi dùng');
     }
+    refreshGeneralSettings();
     refresh();
   };
 
@@ -167,13 +192,16 @@ function AppInner() {
         </div>
       )}
 
-      {currentPage === 'dashboard' && <Dashboard data={inventoryData} />}
+      {currentPage === 'dashboard' && (
+        <Dashboard data={inventoryData} lowStockThreshold={generalSettings.lowStockThreshold} />
+      )}
       {currentPage === 'inventory' && (
         <InventoryManagement
           products={inventoryData.products}
           onProductsUpdate={handleProductsUpdate}
           onRefresh={refresh}
           currentUser={currentUser}
+          lowStockThreshold={generalSettings.lowStockThreshold}
         />
       )}
       {currentPage === 'transaction' && (
@@ -209,7 +237,9 @@ function AppInner() {
       {currentPage === 'admin-data' && currentUser.role !== 'admin' && (
         <PermissionDenied menu="admin-data" />
       )}
-      {currentPage === 'settings' && currentUser.role === 'admin' && <SettingsPage />}
+      {currentPage === 'settings' && currentUser.role === 'admin' && (
+        <SettingsPage onGeneralSettingsSaved={setGeneralSettings} />
+      )}
       {currentPage === 'settings' && currentUser.role !== 'admin' && (
         <PermissionDenied menu="settings" />
       )}

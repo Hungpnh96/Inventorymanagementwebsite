@@ -21,9 +21,9 @@ import { EmptyState } from './ui-ext/EmptyState';
 
 interface DashboardProps {
   data: InventoryData;
+  /** Server-configured stock-low threshold (Cài đặt > Cài đặt chung). */
+  lowStockThreshold: number;
 }
-
-const STOCK_LOW_THRESHOLD = 10;
 
 interface KpiSpec {
   key: string;
@@ -101,12 +101,12 @@ function KpiCard({ kpi }: { kpi: KpiSpec }) {
   );
 }
 
-export function Dashboard({ data }: DashboardProps) {
+export function Dashboard({ data, lowStockThreshold }: DashboardProps) {
   const stats = useMemo(() => {
     const totalProducts = data.products.length;
     const totalValue = data.products.reduce((sum, p) => sum + p.giaTriKho, 0);
     const totalStock = data.products.reduce((sum, p) => sum + p.tonKho, 0);
-    const lowStock = data.products.filter((p) => p.tonKho < STOCK_LOW_THRESHOLD);
+    const lowStock = data.products.filter((p) => p.tonKho < lowStockThreshold);
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -131,7 +131,7 @@ export function Dashboard({ data }: DashboardProps) {
       todayImportCount,
       todayExportCount,
     };
-  }, [data]);
+  }, [data, lowStockThreshold]);
 
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat('vi-VN', {
@@ -170,7 +170,7 @@ export function Dashboard({ data }: DashboardProps) {
       key: 'low',
       label: 'Hàng sắp hết',
       value: stats.lowStock.length,
-      caption: `< ${STOCK_LOW_THRESHOLD} đơn vị`,
+      caption: `< ${lowStockThreshold} đơn vị`,
       icon: AlertTriangle,
       tone: stats.lowStock.length > 0 ? 'danger' : 'neutral',
     },
@@ -255,7 +255,7 @@ export function Dashboard({ data }: DashboardProps) {
           <CardHeader className="flex flex-row items-center justify-between space-y-0">
             <div>
               <CardTitle className="text-base">Hàng sắp hết</CardTitle>
-              <p className="text-xs text-muted-foreground">Dưới ngưỡng {STOCK_LOW_THRESHOLD} đơn vị</p>
+              <p className="text-xs text-muted-foreground">Dưới ngưỡng {lowStockThreshold} đơn vị</p>
             </div>
             <span className="rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-semibold text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
               {stats.lowStock.length}

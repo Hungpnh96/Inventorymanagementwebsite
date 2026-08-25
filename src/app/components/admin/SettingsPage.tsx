@@ -4,15 +4,32 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Switch } from '../ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import {
+  getGeneralSettings,
   getTelegramSettings,
   testTelegramSettings,
+  updateGeneralSettings,
   updateTelegramSettings,
+  type GeneralSettings,
   type TelegramSettings,
 } from '../../utils/api';
 import { toast } from 'sonner';
-import { Bell, Eye, EyeOff, Hash, KeyRound, RefreshCw, Save, Send } from 'lucide-react';
+import {
+  Bell,
+  Eye,
+  EyeOff,
+  Hash,
+  KeyRound,
+  Languages,
+  PackageMinus,
+  RefreshCw,
+  Save,
+  Send,
+  SlidersHorizontal,
+} from 'lucide-react';
 import { cn } from '../ui/utils';
+import { STOCK_LOW_THRESHOLD } from '../../design/status-colors';
 
 const EMPTY: TelegramSettings = {
   botToken: '',
@@ -20,9 +37,19 @@ const EMPTY: TelegramSettings = {
   notifyUserCreate: false,
   notifyPasswordReset: false,
   notifyPermissionRequest: false,
+  notifyLowStock: false,
 };
 
-type NotifyKey = 'notifyUserCreate' | 'notifyPasswordReset' | 'notifyPermissionRequest';
+const EMPTY_GENERAL: GeneralSettings = {
+  language: 'vi',
+  lowStockThreshold: STOCK_LOW_THRESHOLD,
+};
+
+type NotifyKey =
+  | 'notifyUserCreate'
+  | 'notifyPasswordReset'
+  | 'notifyPermissionRequest'
+  | 'notifyLowStock';
 
 const TOGGLES: { key: NotifyKey; label: string; hint: string }[] = [
   {
@@ -40,24 +67,37 @@ const TOGGLES: { key: NotifyKey; label: string; hint: string }[] = [
     label: 'Thông báo khi có yêu cầu cấp quyền',
     hint: 'Gửi tin nhắn khi người dùng bấm "Yêu cầu cấp quyền" ở trang bị khoá',
   },
+  {
+    key: 'notifyLowStock',
+    label: 'Thông báo khi tồn kho xuống dưới ngưỡng',
+    hint: 'Gửi tin nhắn khi một sản phẩm rơi xuống dưới ngưỡng cảnh báo ở "Cài đặt chung"',
+  },
 ];
 
-export function SettingsPage() {
+interface Props {
+  /** Lets the app refresh its cached threshold right after an admin saves, without a page reload. */
+  onGeneralSettingsSaved?: (s: GeneralSettings) => void;
+}
+
+export function SettingsPage({ onGeneralSettingsSaved }: Props) {
   const [settings, setSettings] = useState<TelegramSettings>(EMPTY);
+  const [general, setGeneral] = useState<GeneralSettings>(EMPTY_GENERAL);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [savingGeneral, setSavingGeneral] = useState(false);
   const [testing, setTesting] = useState(false);
   const [showToken, setShowToken] = useState(false);
 
   const load = async () => {
     setLoading(true);
-    try {
-      setSettings(await getTelegramSettings());
-    } catch (e: any) {
-      toast.error(e.message || 'Không tải được cấu hình Telegram');
-    } finally {
-      setLoading(false);
-    }
+    // Both cards load in one pass — settled independently so a failure on one
+    // does not blank out the other.
+    const [tg, gen] = await Promise.allSettled([getTelegramSettings(), getGeneralSettings()]);
+    if (tg.status === 'fulfilled') setSettings(tg.value);
+    else toast.error((tg.reason as any)?.message || 'Không tải được cấu hình Telegram');
+    if (gen.status === 'fulfilled') setGeneral(gen.value);
+    else toast.error((gen.reason as any)?.message || 'Không tải được cài đặt chung');
+    setLoading(false);
   };
 
   useEffect(() => {
@@ -98,6 +138,26 @@ export function SettingsPage() {
     }
   };
 
+  const handleSaveGeneral = async () => {
+    // Mirror the server's 400 rule locally so the user gets an inline message
+    // instead of a round-trip error.
+    if (general.lowStockThreshold < 0) {
+      toast.error('Ngưỡng cảnh báo tồn kho thấp không được nhỏ hơn 0');
+      return;
+    }
+    setSavingGeneral(true);
+    try {
+      const saved = await updateGeneralSettings(general);
+      setGeneral(saved);
+      onGeneralSettingsSaved?.(saved);
+      toast.success('Đã lưu cài đặt chung');
+    } catch (e: any) {
+      toast.error(e.message || 'Lưu cài đặt chung thất bại');
+    } finally {
+      setSavingGeneral(false);
+    }
+  };
+
   const busy = saving || testing;
 
   return (
@@ -111,10 +171,10 @@ export function SettingsPage() {
             </span>
           </div>
           <p className="text-sm text-muted-foreground">
-            Cấu hình kênh thông báo của hệ thống
+            Cấu hình chung và kênh thông báo của hệ thống
           </p>
         </div>
-        <Button onClick={load} variant="outline" disabled={loading || busy}>
+        <Button onClick={load} variant="outline" disabled={loading || busy || savingGeneral}>
           <RefreshCw className={cn('mr-2 h-4 w-4', loading && 'animate-spin')} />
           Tải lại
         </Button>
@@ -123,11 +183,93 @@ export function SettingsPage() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
+            <SlidersHorizontal className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+            Cài đặt chung
+          </CardTitle>
+          <CardDescription>
+            Các tuỳ chọn áp dụng cho toàn hệ thống, ảnh hưởng tới cách hiển thị và cảnh báo tồn kho.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="py-8 text-center text-sm text-muted-foreground">Đang tải...</div>
+          ) : (
+            <div className="space-y-5">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="language" className="flex items-center gap-1.5">
+                    <Languages className="h-3.5 w-3.5 text-muted-foreground" />
+                    Ngôn ngữ
+                  </Label>
+                  <Select
+                    value={general.language}
+                    onValueChange={(v) => setGeneral((prev) => ({ ...prev, language: v }))}
+                    disabled={savingGeneral}
+                  >
+                    <SelectTrigger id="language">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="vi">Tiếng Việt</SelectItem>
+                      <SelectItem value="en">English</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Giao diện hiện tại chỉ hỗ trợ Tiếng Việt — lựa chọn này sẽ được dùng khi tính năng
+                    đa ngôn ngữ hoàn thiện.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="lowStockThreshold" className="flex items-center gap-1.5">
+                    <PackageMinus className="h-3.5 w-3.5 text-muted-foreground" />
+                    Ngưỡng cảnh báo tồn kho thấp
+                  </Label>
+                  <Input
+                    id="lowStockThreshold"
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={general.lowStockThreshold}
+                    onChange={(e) => {
+                      // A number input hands back '' for empty/invalid text; Number()
+                      // maps that to 0, and the guard covers any remaining NaN so the
+                      // field stays controlled and the server never receives NaN.
+                      const n = Number(e.target.value);
+                      setGeneral((prev) => ({
+                        ...prev,
+                        lowStockThreshold: Number.isFinite(n) ? n : 0,
+                      }));
+                    }}
+                    disabled={savingGeneral}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Sản phẩm có tồn kho dưới mức này sẽ được đánh dấu “Tồn kho thấp” trên Dashboard và
+                    Tồn kho, đồng thời gửi thông báo Telegram nếu bật ở dưới.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+                <Button onClick={handleSaveGeneral} disabled={savingGeneral}>
+                  <Save className="mr-2 h-4 w-4" />
+                  {savingGeneral ? 'Đang lưu...' : 'Lưu cài đặt chung'}
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
             <Send className="h-4 w-4 text-sky-600 dark:text-sky-400" />
             Cấu hình Bot Telegram
           </CardTitle>
           <CardDescription>
-            Nhận thông báo tự động khi có nhân sự mới, yêu cầu đổi mật khẩu, hoặc yêu cầu cấp quyền.
+            Nhận thông báo tự động khi có nhân sự mới, yêu cầu đổi mật khẩu, yêu cầu cấp quyền, hoặc
+            tồn kho xuống dưới ngưỡng.
             Bot sẽ gửi tin nhắn vào nhóm hoặc tài khoản Telegram được cấu hình bên dưới.
           </CardDescription>
         </CardHeader>

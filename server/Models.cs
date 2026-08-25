@@ -140,7 +140,8 @@ public record TelegramSettings(
     string ChatId,
     bool NotifyUserCreate,
     bool NotifyPasswordReset,
-    bool NotifyPermissionRequest
+    bool NotifyPermissionRequest,
+    bool NotifyLowStock
 );
 
 public record TelegramSettingsUpdateRequest(
@@ -148,9 +149,36 @@ public record TelegramSettingsUpdateRequest(
     string ChatId,
     bool NotifyUserCreate,
     bool NotifyPasswordReset,
-    bool NotifyPermissionRequest
+    bool NotifyPermissionRequest,
+    bool NotifyLowStock
 );
 
 public record AccessRequestBody(string Menu, string? Reason);
 
 public record TelegramTestResult(bool Ok, string? Error);
+
+// ---------------- EPIC-006 — Settings module (general / UI preferences) ----------------
+
+/// <summary>
+/// Admin-configurable, app-wide preferences. `Language` is stored only (the UI is 100%
+/// Vietnamese today) — it is a saved preference for a future i18n pass.
+/// </summary>
+public record GeneralSettings(
+    string Language,
+    double LowStockThreshold
+);
+
+public record GeneralSettingsUpdateRequest(
+    string Language,
+    double LowStockThreshold
+);
+
+/// <summary>
+/// Result of RecordTransactionAsync — carries the stock level on both sides of the write so
+/// callers can detect a low-stock threshold crossing without a second query.
+/// </summary>
+public record TransactionResult(
+    Transaction Transaction,
+    double StockBefore,
+    double StockAfter
+);

@@ -403,6 +403,7 @@ export interface TelegramSettings {
   notifyUserCreate: boolean;
   notifyPasswordReset: boolean;
   notifyPermissionRequest: boolean;
+  notifyLowStock: boolean;
 }
 
 export async function getTelegramSettings(): Promise<TelegramSettings> {
@@ -432,6 +433,30 @@ export async function testTelegramSettings(): Promise<{ ok: boolean; error: stri
   });
   if (!res.ok) throw new Error(await readError(res));
   return normalize<{ ok: boolean; error: string | null }>(await res.json());
+}
+
+export interface GeneralSettings {
+  /** Saved UI language preference. The app is Vietnamese-only today — this is a stored preference. */
+  language: string;
+  lowStockThreshold: number;
+}
+
+/** Readable by ANY authenticated user (not admin-gated) — the threshold drives Dashboard/Tồn kho badges. */
+export async function getGeneralSettings(): Promise<GeneralSettings> {
+  const res = await fetch(`${BASE}/settings/general`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(await readError(res));
+  return normalize<GeneralSettings>(await res.json());
+}
+
+/** Admin-only. Echoes back the saved values, so the caller can trust the response over its local draft. */
+export async function updateGeneralSettings(settings: GeneralSettings): Promise<GeneralSettings> {
+  const res = await fetch(`${BASE}/admin/settings/general`, {
+    method: 'PUT',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  return normalize<GeneralSettings>(await res.json());
 }
 
 /**

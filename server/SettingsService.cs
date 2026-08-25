@@ -1,3 +1,4 @@
+using System.Globalization;
 using Dapper;
 
 namespace Inventory;
@@ -14,6 +15,12 @@ public sealed class SettingsService
     public const string KeyTelegramNotifyUserCreate = "telegram.notify_user_create";
     public const string KeyTelegramNotifyPasswordReset = "telegram.notify_password_reset";
     public const string KeyTelegramNotifyPermissionRequest = "telegram.notify_permission_request";
+    public const string KeyTelegramNotifyLowStock = "telegram.notify_low_stock";
+    public const string KeyAppLanguage = "app.language";
+    public const string KeyLowStockThreshold = "inventory.low_stock_threshold";
+
+    public const string DefaultLanguage = "vi";
+    public const double DefaultLowStockThreshold = 10;
 
     private readonly Db _db;
 
@@ -84,7 +91,8 @@ public sealed class SettingsService
             ChatId: Str(KeyTelegramChatId),
             NotifyUserCreate: Bool(KeyTelegramNotifyUserCreate),
             NotifyPasswordReset: Bool(KeyTelegramNotifyPasswordReset),
-            NotifyPermissionRequest: Bool(KeyTelegramNotifyPermissionRequest));
+            NotifyPermissionRequest: Bool(KeyTelegramNotifyPermissionRequest),
+            NotifyLowStock: Bool(KeyTelegramNotifyLowStock));
     }
 
     public Task UpdateTelegramSettingsAsync(TelegramSettingsUpdateRequest req, long? updatedByUserId) =>
@@ -95,5 +103,37 @@ public sealed class SettingsService
             [KeyTelegramNotifyUserCreate] = req.NotifyUserCreate ? "true" : "false",
             [KeyTelegramNotifyPasswordReset] = req.NotifyPasswordReset ? "true" : "false",
             [KeyTelegramNotifyPermissionRequest] = req.NotifyPermissionRequest ? "true" : "false",
+            [KeyTelegramNotifyLowStock] = req.NotifyLowStock ? "true" : "false",
+        }, updatedByUserId);
+
+    /// <summary>
+    /// App-wide preferences. Both keys fall back to their defaults when absent, so the endpoint
+    /// works on a database that has never had the settings saved.
+    /// </summary>
+    public async Task<GeneralSettings> GetGeneralSettingsAsync()
+    {
+        var all = await GetAllAsync();
+
+        var language = all.TryGetValue(KeyAppLanguage, out var lang) && !string.IsNullOrWhiteSpace(lang)
+            ? lang
+            : DefaultLanguage;
+
+        // InvariantCulture on purpose: the value is persisted as text and the server locale
+        // must not decide whether "10.5" or "10,5" parses.
+        var threshold = DefaultLowStockThreshold;
+        if (all.TryGetValue(KeyLowStockThreshold, out var raw)
+            && double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed))
+        {
+            threshold = parsed;
+        }
+
+        return new GeneralSettings(Language: language, LowStockThreshold: threshold);
+    }
+
+    public Task UpdateGeneralSettingsAsync(GeneralSettingsUpdateRequest req, long? updatedByUserId) =>
+        SetManyAsync(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [KeyAppLanguage] = (req.Language ?? DefaultLanguage).Trim(),
+            [KeyLowStockThreshold] = req.LowStockThreshold.ToString(CultureInfo.InvariantCulture),
         }, updatedByUserId);
 }

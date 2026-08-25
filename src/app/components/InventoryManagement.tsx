@@ -21,6 +21,8 @@ interface InventoryManagementProps {
   onProductsUpdate: (products: Product[]) => void;
   onRefresh: () => void;
   currentUser: User;
+  /** Server-configured stock-low threshold (Cài đặt > Cài đặt chung). */
+  lowStockThreshold: number;
 }
 
 export function InventoryManagement({
@@ -28,6 +30,7 @@ export function InventoryManagement({
   onProductsUpdate,
   onRefresh,
   currentUser,
+  lowStockThreshold,
 }: InventoryManagementProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -307,7 +310,7 @@ export function InventoryManagement({
               />
             ) : (
               filteredProducts.map((product) => {
-                const lowStock = product.tonKho < 10;
+                const lowStock = product.tonKho < lowStockThreshold;
                 const tonKhoCls = lowStock
                   ? 'inline-flex items-center rounded-full bg-rose-100 px-2.5 py-1 text-xs font-semibold text-rose-700'
                   : product.tonKho < 50
@@ -445,7 +448,7 @@ export function InventoryManagement({
                   </TableRow>
                 ) : (
                   filteredProducts.map((product) => {
-                    const lowStock = product.tonKho < 10;
+                    const lowStock = product.tonKho < lowStockThreshold;
                     const tonKhoCls = lowStock
                       ? 'inline-flex items-center rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-semibold text-rose-700'
                       : product.tonKho < 50

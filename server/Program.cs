@@ -509,7 +509,7 @@ app.MapDelete("/api/products/{sku}", async (
 
 app.MapPost("/api/transactions", async (
     TransactionRequest body, HttpContext ctx, ClaimsPrincipal user,
-    PostgresStore store, IAuditLogger audit) =>
+    PostgresStore store, IAuditLogger audit, SettingsService settings, TelegramNotifier telegram) =>
 {
     if (body.Quantity <= 0)
         return Results.BadRequest(new { error = "Số lượng phải lớn hơn 0" });
@@ -518,11 +518,21 @@ app.MapPost("/api/transactions", async (
 
     try
     {
-        var tx = await store.RecordTransactionAsync(body, Username(user), IsAdmin(user));
-        await audit.LogAsync(AuditActions.TransactionCreate, "transaction", tx.Id,
-            UserId(user), Username(user), Role(user), null, tx,
+        var result = await store.RecordTransactionAsync(body, Username(user), IsAdmin(user));
+        await audit.LogAsync(AuditActions.TransactionCreate, "transaction", result.Transaction.Id,
+            UserId(user), Username(user), Role(user), null, result.Transaction,
             ClientIp(ctx), AuditContext.GetUserAgent(ctx));
-        return Results.Ok(new { transaction = tx, data = await store.ReadAsync() });
+
+        // Edge-triggered, not level-triggered: only the transaction that actually crosses the
+        // threshold notifies. Further exports while already low stay silent (no spam).
+        var general = await settings.GetGeneralSettingsAsync();
+        if (result.StockBefore >= general.LowStockThreshold && result.StockAfter < general.LowStockThreshold)
+        {
+            await telegram.NotifyIfEnabledAsync(TelegramEvent.LowStock,
+                $"📉 <b>Tồn kho thấp</b>\nSKU: {result.Transaction.MaSKU}\nSản phẩm: {result.Transaction.TenSanPham}\nTồn kho hiện tại: {result.StockAfter}\nNgưỡng cảnh báo: {general.LowStockThreshold}");
+        }
+
+        return Results.Ok(new { transaction = result.Transaction, data = await store.ReadAsync() });
     }
     catch (InvalidOperationException ex)
     {
@@ -761,6 +771,7 @@ app.MapPut("/api/admin/settings/telegram", async (
             notifyUserCreate = body.NotifyUserCreate,
             notifyPasswordReset = body.NotifyPasswordReset,
             notifyPermissionRequest = body.NotifyPermissionRequest,
+            notifyLowStock = body.NotifyLowStock,
         },
         ClientIp(ctx), AuditContext.GetUserAgent(ctx));
 
@@ -772,6 +783,36 @@ app.MapPost("/api/admin/settings/telegram/test", async (ClaimsPrincipal user, Te
     if (!IsAdmin(user)) return Results.StatusCode(StatusCodes.Status403Forbidden);
     // 200 even when ok=false: this is a diagnostic result, not a server error.
     return Results.Ok(await telegram.SendTestMessageAsync());
+}).RequireAuthorization();
+
+// ---------- Settings: General (language preference + low-stock threshold) ----------
+// GET is open to any authenticated user on purpose: every client needs the threshold to render
+// low-stock badges. The payload holds no secrets. Writing stays admin-only.
+app.MapGet("/api/settings/general", async (SettingsService settings) =>
+    Results.Ok(await settings.GetGeneralSettingsAsync()))
+    .RequireAuthorization();
+
+app.MapPut("/api/admin/settings/general", async (
+    GeneralSettingsUpdateRequest body, HttpContext ctx, ClaimsPrincipal user,
+    SettingsService settings, IAuditLogger audit) =>
+{
+    if (!IsAdmin(user)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+    if (body is null) return Results.BadRequest(new { error = "Thiếu dữ liệu" });
+
+    var language = (body.Language ?? "").Trim();
+    if (language is not ("vi" or "en"))
+        return Results.BadRequest(new { error = "Ngôn ngữ không hợp lệ" });
+    if (body.LowStockThreshold < 0)
+        return Results.BadRequest(new { error = "Ngưỡng cảnh báo phải >= 0" });
+
+    await settings.UpdateGeneralSettingsAsync(body with { Language = language }, UserId(user));
+
+    await audit.LogAsync(AuditActions.SettingsUpdate, "general_settings", null,
+        UserId(user), Username(user), Role(user), null,
+        new { language, lowStockThreshold = body.LowStockThreshold },
+        ClientIp(ctx), AuditContext.GetUserAgent(ctx));
+
+    return Results.Ok(await settings.GetGeneralSettingsAsync());
 }).RequireAuthorization();
 
 // ---------- Access requests (any authenticated user, from the permission-denied wall) ----------
