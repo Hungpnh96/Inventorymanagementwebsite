@@ -18,6 +18,8 @@ dist/
 # .NET
 server/bin/
 server/obj/
+server/**/bin/
+server/**/obj/
 
 # Runtime data — never push to git (DB volume, Excel uploads, raw dumps)
 data/
