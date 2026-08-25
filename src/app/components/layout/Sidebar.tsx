@@ -58,7 +58,7 @@ export const NAV_ITEMS: NavItem[] = [
   { id: 'admin-audit', label: 'Audit log', icon: ScrollText, group: 'admin', adminOnly: true },
   { id: 'admin-data', label: 'Quản trị dữ liệu', icon: DatabaseBackup, group: 'admin', adminOnly: true },
   { id: 'reports', label: 'Báo cáo', icon: BarChart3, group: 'insight' },
-  { id: 'settings', label: 'Cài đặt', icon: Settings, group: 'insight', comingSoon: true },
+  { id: 'settings', label: 'Cài đặt', icon: Settings, group: 'insight' },
 ];
 
 // Make SOON items navigable (they render ComingSoon preview pages, not disabled).

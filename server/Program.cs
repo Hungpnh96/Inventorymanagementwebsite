@@ -61,6 +61,9 @@ builder.Services.AddSingleton(_ => new BackupService(dataBackupDir));
 builder.Services.AddSingleton<UserAdminService>();
 builder.Services.AddSingleton<AuditQueryService>();
 builder.Services.AddSingleton<PermissionService>();
+builder.Services.AddSingleton<SettingsService>();
+builder.Services.AddSingleton<TelegramNotifier>();
+builder.Services.AddHttpClient();
 
 // ---------- Auth ----------
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -129,6 +132,10 @@ using (var scope = app.Services.CreateScope())
         catch (Exception ex) { app.Logger.LogWarning(ex, "Admin seed failed"); }
     }
 
+    var settings = scope.ServiceProvider.GetRequiredService<SettingsService>();
+    try { await settings.EnsureSchemaAsync(); }
+    catch (Exception ex) { app.Logger.LogWarning(ex, "app_settings schema ensure failed"); }
+
     var store = scope.ServiceProvider.GetRequiredService<PostgresStore>();
     var alreadyMigrated = await store.GetMigrationStateAsync("xlsx_imported");
     if (string.IsNullOrEmpty(alreadyMigrated) && await store.CountProductsAsync() == 0 && File.Exists(legacyXlsxPath))
@@ -155,6 +162,15 @@ static long? UserId(ClaimsPrincipal user) =>
     long.TryParse(user.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : null;
 static string Role(ClaimsPrincipal user) => user.FindFirstValue(ClaimTypes.Role) ?? "user";
 static string? ClientIp(HttpContext ctx) => ctx.Connection.RemoteIpAddress?.ToString();
+
+// EPIC-006 — the raw Telegram bot token must never round-trip to the browser once saved.
+static string MaskBotToken(string token)
+{
+    if (string.IsNullOrEmpty(token)) return "";
+    return token.Length > 4 ? new string('\u2022', token.Length - 4) + token[^4..] : "\u2022\u2022\u2022\u2022";
+}
+
+static TelegramSettings MaskTelegram(TelegramSettings s) => s with { BotToken = MaskBotToken(s.BotToken) };
 
 // ---------- Health (verbose) ----------
 app.MapGet("/api/health", async (Db db, IConnectionMultiplexer redis) =>
@@ -305,7 +321,8 @@ static Dictionary<string, Dictionary<string, bool>> AdminAllAllowedMatrix()
 app.MapPost("/api/auth/password-reset-request", async (
     PasswordResetRequest body,
     HttpContext ctx,
-    IAuditLogger audit) =>
+    IAuditLogger audit,
+    TelegramNotifier telegram) =>
 {
     var username = (body.Username ?? "").Trim();
     var reason = (body.Reason ?? "").Trim();
@@ -321,6 +338,12 @@ app.MapPost("/api/auth/password-reset-request", async (
         null,
         new { username, reason = string.IsNullOrEmpty(reason) ? null : reason, requestedAt = DateTime.UtcNow },
         ClientIp(ctx), AuditContext.GetUserAgent(ctx));
+
+    // EPIC-006 — notify admins. NotifyIfEnabledAsync never throws, so awaiting is safe.
+    await telegram.NotifyIfEnabledAsync(
+        TelegramEvent.PasswordReset,
+        $"🔑 <b>Yêu cầu đổi mật khẩu</b>\nUsername: {username}\nLý do: {(string.IsNullOrEmpty(reason) ? "(không có)" : reason)}");
+
     return Results.Ok(new { ok = true, message = "Yêu cầu đã được ghi nhận. Quản trị viên sẽ liên hệ lại." });
 });
 
@@ -516,7 +539,7 @@ app.MapGet("/api/admin/users", async (ClaimsPrincipal user, UserAdminService svc
 
 app.MapPost("/api/admin/users", async (
     CreateUserRequest body, HttpContext ctx, ClaimsPrincipal user,
-    UserAdminService svc, IAuditLogger audit) =>
+    UserAdminService svc, IAuditLogger audit, TelegramNotifier telegram) =>
 {
     if (!IsAdmin(user)) return Results.StatusCode(StatusCodes.Status403Forbidden);
     var result = await svc.CreateAsync(body);
@@ -531,6 +554,12 @@ app.MapPost("/api/admin/users", async (
         UserId(user), Username(user), Role(user), null,
         new { result.User.Id, result.User.Username, result.User.Role },
         ClientIp(ctx), AuditContext.GetUserAgent(ctx));
+
+    // EPIC-006 — notify admins. NotifyIfEnabledAsync never throws, so awaiting is safe.
+    await telegram.NotifyIfEnabledAsync(
+        TelegramEvent.UserCreate,
+        $"👤 <b>Nhân sự mới</b>\nUsername: {result.User.Username}\nHọ tên: {result.User.FullName}\nVai trò: {result.User.Role}");
+
     return Results.Created($"/api/admin/users/{result.User.Id}", result.User);
 }).RequireAuthorization();
 
@@ -694,6 +723,97 @@ app.MapPost("/api/admin/data/backups/{fileName}/restore", async (
         },
         ClientIp(ctx), AuditContext.GetUserAgent(ctx));
     return Results.Ok(new { restoredFrom = fileName, safetyBackup, data = await store.ReadAsync() });
+}).RequireAuthorization();
+
+// ---------- Admin: Settings (Telegram notifications) ----------
+app.MapGet("/api/admin/settings/telegram", async (ClaimsPrincipal user, SettingsService settings) =>
+{
+    if (!IsAdmin(user)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+    return Results.Ok(MaskTelegram(await settings.GetTelegramSettingsAsync()));
+}).RequireAuthorization();
+
+app.MapPut("/api/admin/settings/telegram", async (
+    TelegramSettingsUpdateRequest body, HttpContext ctx, ClaimsPrincipal user,
+    SettingsService settings, IAuditLogger audit) =>
+{
+    if (!IsAdmin(user)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+    if (body is null) return Results.BadRequest(new { error = "Thiếu dữ liệu" });
+
+    var current = await settings.GetTelegramSettingsAsync();
+
+    // The FE only ever sees a masked token. If it echoes the mask back, the admin did not
+    // change it — keep the stored secret instead of overwriting it with bullet characters.
+    var incomingToken = (body.BotToken ?? "").Trim();
+    var tokenIsMask = incomingToken.StartsWith('\u2022');
+    var botToken = tokenIsMask ? current.BotToken : incomingToken;
+    var chatId = (body.ChatId ?? "").Trim();
+
+    var toSave = body with { BotToken = botToken, ChatId = chatId };
+    await settings.UpdateTelegramSettingsAsync(toSave, UserId(user));
+
+    // Never log the raw token/chat id into audit history — booleans only.
+    await audit.LogAsync(AuditActions.SettingsUpdate, "telegram_settings", null,
+        UserId(user), Username(user), Role(user), null,
+        new
+        {
+            tokenChanged = !tokenIsMask && botToken != current.BotToken,
+            chatIdChanged = chatId != current.ChatId,
+            notifyUserCreate = body.NotifyUserCreate,
+            notifyPasswordReset = body.NotifyPasswordReset,
+            notifyPermissionRequest = body.NotifyPermissionRequest,
+        },
+        ClientIp(ctx), AuditContext.GetUserAgent(ctx));
+
+    return Results.Ok(MaskTelegram(await settings.GetTelegramSettingsAsync()));
+}).RequireAuthorization();
+
+app.MapPost("/api/admin/settings/telegram/test", async (ClaimsPrincipal user, TelegramNotifier telegram) =>
+{
+    if (!IsAdmin(user)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+    // 200 even when ok=false: this is a diagnostic result, not a server error.
+    return Results.Ok(await telegram.SendTestMessageAsync());
+}).RequireAuthorization();
+
+// ---------- Access requests (any authenticated user, from the permission-denied wall) ----------
+// Intentionally has no dedicated table: the audit log IS the record, and doubles as the
+// rate-limit source (one request per user per menu per 10 minutes).
+app.MapPost("/api/access-requests", async (
+    AccessRequestBody body, HttpContext ctx, ClaimsPrincipal user,
+    Db db, IAuditLogger audit, TelegramNotifier telegram) =>
+{
+    var menu = (body?.Menu ?? "").Trim();
+    var reason = (body?.Reason ?? "").Trim();
+    if (string.IsNullOrEmpty(menu))
+        return Results.BadRequest(new { error = "Thiếu tên trang cần cấp quyền" });
+    if (menu.Length > 64 || reason.Length > 500)
+        return Results.BadRequest(new { error = "Tên trang/lý do quá dài" });
+
+    var userId = UserId(user);
+    using (var c = await db.OpenAsync())
+    {
+        var recent = await Dapper.SqlMapper.ExecuteScalarAsync<long>(c, @"
+            SELECT COUNT(*) FROM audit_logs
+            WHERE action = @action
+              AND actor_user_id IS NOT DISTINCT FROM @userId::bigint
+              AND resource_id = @menu
+              AND at > NOW() - INTERVAL '10 minutes'",
+            new { action = AuditActions.PermissionRequestAccess, userId, menu });
+        if (recent > 0)
+            return Results.Json(
+                new { error = "Bạn vừa gửi yêu cầu này rồi, vui lòng chờ Admin xử lý" },
+                statusCode: StatusCodes.Status429TooManyRequests);
+    }
+
+    await telegram.NotifyIfEnabledAsync(
+        TelegramEvent.PermissionRequest,
+        $"\U0001F512 <b>Yêu cầu cấp quyền</b>\nUser: {Username(user)}\nTrang: {menu}\nLý do: {(string.IsNullOrEmpty(reason) ? "(không có)" : reason)}");
+
+    await audit.LogAsync(AuditActions.PermissionRequestAccess, "permission", menu,
+        userId, Username(user), Role(user), null,
+        new { menu, reason = string.IsNullOrEmpty(reason) ? null : reason },
+        ClientIp(ctx), AuditContext.GetUserAgent(ctx));
+
+    return Results.Ok(new { ok = true });
 }).RequireAuthorization();
 
 // ---------- Admin: Audit (EPIC-003 S4) ----------

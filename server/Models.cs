@@ -132,3 +132,25 @@ public record AuditPageResponse(
 public record BackupInfo(string FileName, DateTime CreatedAt, long SizeBytes);
 
 public record ClearDataRequest(string ConfirmText);
+
+// ---------------- EPIC-006 — Settings module (Telegram notifications) ----------------
+
+public record TelegramSettings(
+    string BotToken,
+    string ChatId,
+    bool NotifyUserCreate,
+    bool NotifyPasswordReset,
+    bool NotifyPermissionRequest
+);
+
+public record TelegramSettingsUpdateRequest(
+    string BotToken,
+    string ChatId,
+    bool NotifyUserCreate,
+    bool NotifyPasswordReset,
+    bool NotifyPermissionRequest
+);
+
+public record AccessRequestBody(string Menu, string? Reason);
+
+public record TelegramTestResult(bool Ok, string? Error);

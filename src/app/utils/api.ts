@@ -393,3 +393,57 @@ export async function adminDownloadBackup(fileName: string): Promise<void> {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+// ---------- Admin settings (Telegram) + access requests ----------
+
+export interface TelegramSettings {
+  /** Masked on read (e.g. "••••••1234") — send it back as-is to keep the stored token. */
+  botToken: string;
+  chatId: string;
+  notifyUserCreate: boolean;
+  notifyPasswordReset: boolean;
+  notifyPermissionRequest: boolean;
+}
+
+export async function getTelegramSettings(): Promise<TelegramSettings> {
+  const res = await fetch(`${BASE}/admin/settings/telegram`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(await readError(res));
+  return normalize<TelegramSettings>(await res.json());
+}
+
+export async function updateTelegramSettings(settings: TelegramSettings): Promise<TelegramSettings> {
+  const res = await fetch(`${BASE}/admin/settings/telegram`, {
+    method: 'PUT',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  return normalize<TelegramSettings>(await res.json());
+}
+
+/**
+ * Sends a probe message through the configured bot. Always resolves on HTTP 200 —
+ * a misconfiguration comes back as `{ ok: false, error }`, not as an HTTP error.
+ */
+export async function testTelegramSettings(): Promise<{ ok: boolean; error: string | null }> {
+  const res = await fetch(`${BASE}/admin/settings/telegram/test`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  return normalize<{ ok: boolean; error: string | null }>(await res.json());
+}
+
+/**
+ * Ask an admin for access to a gated menu. A 429 (same menu requested within the
+ * cooldown window) surfaces the server's Vietnamese message via `readError`, so the
+ * caller can toast `e.message` directly instead of a generic error.
+ */
+export async function requestAccess(menu: string, reason?: string): Promise<void> {
+  const res = await fetch(`${BASE}/access-requests`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ menu, reason }),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+}

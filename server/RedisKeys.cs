@@ -41,4 +41,7 @@ public static class AuditActions
     public const string DataClear = "data.clear";
     public const string DataRestore = "data.restore";
     public const string DataBackupCreate = "data.backup.create";
+
+    public const string SettingsUpdate = "settings.update";
+    public const string PermissionRequestAccess = "permission.request_access";
 }

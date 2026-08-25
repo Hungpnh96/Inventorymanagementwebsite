@@ -13,11 +13,12 @@ import {
   SuppliersStub,
   CustomersStub,
   RolesStub,
-  SettingsStub,
   InventoryCheckStub,
 } from './components/stubs/ComingSoon';
 import { AuditLogPage } from './components/admin/AuditLogPage';
 import { DataAdminPage } from './components/admin/DataAdminPage';
+import { SettingsPage } from './components/admin/SettingsPage';
+import { PermissionDenied } from './components/ui-ext/PermissionDenied';
 import { FAB } from './components/ui-ext/FAB';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Plus } from 'lucide-react';
@@ -189,19 +190,29 @@ function AppInner() {
         <UsersPage currentUser={currentUser} />
       )}
       {currentPage === 'admin-users' && currentUser.role !== 'admin' && (
-        <div className="text-center py-12 text-muted-foreground">
-          Không có quyền truy cập trang này.
-        </div>
+        <PermissionDenied menu="admin-users" />
       )}
       {currentPage === 'suppliers' && <SuppliersStub />}
       {currentPage === 'customers' && <CustomersStub />}
       {currentPage === 'audit-stock' && <InventoryCheckStub />}
       {currentPage === 'admin-roles' && currentUser.role === 'admin' && <RolesStub />}
+      {currentPage === 'admin-roles' && currentUser.role !== 'admin' && (
+        <PermissionDenied menu="admin-roles" />
+      )}
       {currentPage === 'admin-audit' && currentUser.role === 'admin' && <AuditLogPage />}
+      {currentPage === 'admin-audit' && currentUser.role !== 'admin' && (
+        <PermissionDenied menu="admin-audit" />
+      )}
       {currentPage === 'admin-data' && currentUser.role === 'admin' && (
         <DataAdminPage onRefresh={refresh} />
       )}
-      {currentPage === 'settings' && <SettingsStub />}
+      {currentPage === 'admin-data' && currentUser.role !== 'admin' && (
+        <PermissionDenied menu="admin-data" />
+      )}
+      {currentPage === 'settings' && currentUser.role === 'admin' && <SettingsPage />}
+      {currentPage === 'settings' && currentUser.role !== 'admin' && (
+        <PermissionDenied menu="settings" />
+      )}
 
       {/* Mobile FAB — quick jump to transaction screen from any other page */}
       {currentPage !== 'transaction' && currentPage !== 'admin-users' && (
