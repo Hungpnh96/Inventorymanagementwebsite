@@ -18,9 +18,10 @@ import { toast } from 'sonner';
 
 interface LoginPageProps {
   onLogin: (result: LoginResult) => void;
+  onShowRegister: () => void;
 }
 
-export function LoginPage({ onLogin }: LoginPageProps) {
+export function LoginPage({ onLogin, onShowRegister }: LoginPageProps) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -145,6 +146,17 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               <LogIn className="mr-2 h-4 w-4" />
               {submitting ? 'Đang đăng nhập...' : 'Đăng nhập'}
             </Button>
+
+            <p className="text-center text-xs text-muted-foreground">
+              Chưa có tài khoản?{' '}
+              <button
+                type="button"
+                onClick={onShowRegister}
+                className="font-medium text-indigo-600 hover:text-indigo-700 hover:underline transition-colors"
+              >
+                Đăng ký ngay
+              </button>
+            </p>
           </form>
         </CardContent>
       </Card>

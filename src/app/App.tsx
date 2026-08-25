@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { LoginPage } from './components/LoginPage';
+import { RegisterPage } from './components/RegisterPage';
 import { Dashboard } from './components/Dashboard';
 import { InventoryManagement } from './components/InventoryManagement';
 import { TransactionForm } from './components/TransactionForm';
@@ -50,6 +51,7 @@ export default function App() {
 function AppInner() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentPage, setCurrentPage] = useState<NavId>('dashboard');
+  const [showRegister, setShowRegister] = useState(false);
   const [inventoryData, setInventoryData] = useState<InventoryData>({ products: [], transactions: [] });
   const [loading, setLoading] = useState(false);
   const [bootstrapping, setBootstrapping] = useState(true);
@@ -161,7 +163,11 @@ function AppInner() {
     return (
       <>
         <Toaster position="top-right" richColors closeButton expand={false} duration={4000} />
-        <LoginPage onLogin={handleLogin} />
+        {showRegister ? (
+          <RegisterPage onBackToLogin={() => setShowRegister(false)} />
+        ) : (
+          <LoginPage onLogin={handleLogin} onShowRegister={() => setShowRegister(true)} />
+        )}
       </>
     );
   }

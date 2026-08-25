@@ -55,6 +55,10 @@ public record PriceHistoryRow(
 
 public record LoginRequest(string Username, string Password);
 
+// EPIC-007 — public self-registration. No `Role` field on purpose: the server always
+// hard-codes 'user' so a registration body can never escalate to admin.
+public record RegisterRequest(string Username, string Password, string FullName);
+
 public record LoginResponse(
     string Token,
     string Username,
@@ -97,7 +101,8 @@ public record UserListItem(
     bool MustChangePassword,
     DateTime? LockedUntil,
     DateTime CreatedAt,
-    long ActiveSessions
+    long ActiveSessions,
+    string Status
 );
 
 public record PermissionsMatrix(
@@ -105,6 +110,9 @@ public record PermissionsMatrix(
 );
 
 public record ResetPasswordResponse(string TempPassword);
+
+// EPIC-007 — shared response shape for admin approve / reject of a pending registration.
+public record ApproveRejectResult(bool Ok, string? Error, UserListItem? User);
 
 public record AuditRow(
     long Id,

@@ -136,6 +136,9 @@ using (var scope = app.Services.CreateScope())
     try { await settings.EnsureSchemaAsync(); }
     catch (Exception ex) { app.Logger.LogWarning(ex, "app_settings schema ensure failed"); }
 
+    try { await auth.EnsureUserStatusColumnAsync(); }
+    catch (Exception ex) { app.Logger.LogWarning(ex, "users.status column ensure failed"); }
+
     var store = scope.ServiceProvider.GetRequiredService<PostgresStore>();
     var alreadyMigrated = await store.GetMigrationStateAsync("xlsx_imported");
     if (string.IsNullOrEmpty(alreadyMigrated) && await store.CountProductsAsync() == 0 && File.Exists(legacyXlsxPath))
@@ -278,6 +281,23 @@ app.MapPost("/api/auth/login", async (
         return Results.Json(new { error = "Sai username hoặc password" }, statusCode: 401);
     }
 
+    // EPIC-007 — approval gate. Deliberately AFTER password verification: checking it earlier
+    // would let anyone probe whether a username exists and its approval state without the password.
+    if (u.Status == "pending")
+    {
+        await audit.LogAsync(AuditActions.LoginFailed, "auth", u.Id.ToString(),
+            u.Id, u.Username, u.Role, null, new { reason = "pending_approval" },
+            ip, AuditContext.GetUserAgent(ctx));
+        return Results.Json(new { error = "Tài khoản đang chờ Admin duyệt.", code = "account_pending" }, statusCode: 403);
+    }
+    if (u.Status == "rejected")
+    {
+        await audit.LogAsync(AuditActions.LoginFailed, "auth", u.Id.ToString(),
+            u.Id, u.Username, u.Role, null, new { reason = "rejected" },
+            ip, AuditContext.GetUserAgent(ctx));
+        return Results.Json(new { error = "Tài khoản đã bị từ chối. Vui lòng liên hệ Admin.", code = "account_rejected" }, statusCode: 403);
+    }
+
     // Success
     await throttle.ResetFailureAsync(u.Id);
     var issued = auth.IssueToken(u);
@@ -315,6 +335,27 @@ static Dictionary<string, Dictionary<string, bool>> AdminAllAllowedMatrix()
             m[menu][action] = true;
     return m;
 }
+
+// Self-registration (public; no auth needed) — EPIC-007. The account is created in `pending`
+// and cannot log in until an admin approves it. Role is hard-coded server-side to 'user'.
+app.MapPost("/api/auth/register", async (
+    RegisterRequest body, HttpContext ctx, AuthService auth, TelegramNotifier telegram, IAuditLogger audit) =>
+{
+    var result = await auth.RegisterAsync(body.Username, body.Password, body.FullName);
+    if (!result.Ok)
+        return Results.BadRequest(new { error = result.Error });
+
+    await audit.LogAsync(AuditActions.UserRegister, "user", result.UserId?.ToString(),
+        result.UserId, body.Username, "user", null,
+        new { username = body.Username, fullName = body.FullName },
+        ClientIp(ctx), AuditContext.GetUserAgent(ctx));
+
+    // EPIC-006 — notify admins. NotifyIfEnabledAsync never throws, so awaiting is safe.
+    await telegram.NotifyIfEnabledAsync(TelegramEvent.UserCreate,
+        $"\U0001F464 <b>Yêu cầu đăng ký tài khoản mới</b>\nUsername: {body.Username}\nHọ tên: {body.FullName}\n\n\u26A0\uFE0F Vào mục Quản trị người dùng để Duyệt/Từ chối.");
+
+    return Results.Ok(new { ok = true, message = "Đăng ký thành công! Vui lòng chờ Admin duyệt tài khoản." });
+});
 
 // Password reset REQUEST (public; no auth needed) — user without login asks admin to reset.
 // We just append to audit_logs so admin can see in audit screen and act manually.
@@ -650,6 +691,32 @@ app.MapPost("/api/admin/users/{id:long}/logout-all", async (
         null, new { sessionsRevoked = killed },
         ClientIp(ctx), AuditContext.GetUserAgent(ctx));
     return Results.Ok(new { sessionsRevoked = killed });
+}).RequireAuthorization();
+
+app.MapPost("/api/admin/users/{id:long}/approve", async (
+    long id, HttpContext ctx, ClaimsPrincipal user,
+    UserAdminService svc, IAuditLogger audit) =>
+{
+    if (!IsAdmin(user)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+    var result = await svc.ApproveAsync(id);
+    if (!result.Ok) return Results.BadRequest(new { error = result.Error });
+    await audit.LogAsync(AuditActions.UserApprove, "user", id.ToString(),
+        UserId(user), Username(user), Role(user), null, new { approvedUserId = id },
+        ClientIp(ctx), AuditContext.GetUserAgent(ctx));
+    return Results.Ok(result.User);
+}).RequireAuthorization();
+
+app.MapPost("/api/admin/users/{id:long}/reject", async (
+    long id, HttpContext ctx, ClaimsPrincipal user,
+    UserAdminService svc, IAuditLogger audit) =>
+{
+    if (!IsAdmin(user)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+    var result = await svc.RejectAsync(id);
+    if (!result.Ok) return Results.BadRequest(new { error = result.Error });
+    await audit.LogAsync(AuditActions.UserReject, "user", id.ToString(),
+        UserId(user), Username(user), Role(user), null, new { rejectedUserId = id },
+        ClientIp(ctx), AuditContext.GetUserAgent(ctx));
+    return Results.Ok(result.User);
 }).RequireAuthorization();
 
 // ---------- Admin: Data (clear/backup/restore) ----------

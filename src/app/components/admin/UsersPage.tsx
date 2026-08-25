@@ -22,12 +22,17 @@ import {
   LogOut,
   Trash2,
   KeyRound as KeyAlert,
+  UserCheck,
+  UserX,
+  Clock,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   adminListUsers,
   adminDeleteUser,
   adminLogoutAll,
+  adminApproveUser,
+  adminRejectUser,
   type AdminUser,
 } from '../../utils/api';
 import type { User } from '../../types';
@@ -38,6 +43,7 @@ import { ResetPasswordDialog } from './ResetPasswordDialog';
 type Confirm =
   | { kind: 'delete'; user: AdminUser }
   | { kind: 'logoutAll'; user: AdminUser }
+  | { kind: 'reject'; user: AdminUser }
   | null;
 
 interface Props {
@@ -53,6 +59,8 @@ export function UsersPage({ currentUser }: Props) {
   const [resetDialog, setResetDialog] = useState<{ open: boolean; user: AdminUser | null }>({ open: false, user: null });
   const [confirm, setConfirm] = useState<Confirm>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
+  /** id of the pending user currently being approved — keeps its row buttons disabled. */
+  const [approvingId, setApprovingId] = useState<number | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -80,6 +88,9 @@ export function UsersPage({ currentUser }: Props) {
       } else if (confirm.kind === 'logoutAll') {
         const count = await adminLogoutAll(confirm.user.id);
         toast.success(`Đã đăng xuất ${count} phiên của '${confirm.user.username}'`);
+      } else if (confirm.kind === 'reject') {
+        await adminRejectUser(confirm.user.id);
+        toast.success(`Đã từ chối đăng ký của '${confirm.user.username}'`);
       }
       setConfirm(null);
       await refresh();
@@ -89,6 +100,24 @@ export function UsersPage({ currentUser }: Props) {
       setConfirmBusy(false);
     }
   };
+
+  const handleApprove = async (u: AdminUser) => {
+    setApprovingId(u.id);
+    try {
+      await adminApproveUser(u.id);
+      toast.success(`Đã duyệt '${u.username}', vào Phân quyền để cấp quyền truy cập`);
+      await refresh();
+    } catch (e: any) {
+      toast.error(e.message || 'Duyệt tài khoản thất bại');
+    } finally {
+      setApprovingId(null);
+    }
+  };
+
+  // Pending self-registrations get their own section so they don't sit in the main table
+  // looking broken (no permissions yet). Rejected users stay in the main list for visibility.
+  const pendingUsers = users.filter((u) => u.status === 'pending');
+  const listedUsers = users.filter((u) => u.status !== 'pending');
 
   return (
     <div className="space-y-6">
@@ -106,9 +135,60 @@ export function UsersPage({ currentUser }: Props) {
         </Button>
       </div>
 
+      {pendingUsers.length > 0 && (
+        <Card className="border-amber-300 bg-amber-50/40">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="h-5 w-5 text-amber-600" />
+              Chờ duyệt
+              <Badge className="bg-amber-500 text-white hover:bg-amber-500">{pendingUsers.length}</Badge>
+            </CardTitle>
+            <CardDescription>
+              Tài khoản do người dùng tự đăng ký. Duyệt xong hãy vào Phân quyền để cấp quyền truy cập.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {pendingUsers.map((u) => (
+              <div
+                key={u.id}
+                className="flex flex-col gap-3 rounded-lg border border-amber-200 bg-white p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="min-w-0">
+                  <div className="font-mono text-sm font-semibold">{u.username}</div>
+                  <div className="truncate text-sm text-slate-700">{u.fullName}</div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    Đăng ký lúc {new Date(u.createdAt).toLocaleString('vi-VN')}
+                  </div>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => handleApprove(u)}
+                    disabled={approvingId === u.id}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  >
+                    <UserCheck className="mr-1.5 h-4 w-4" />
+                    {approvingId === u.id ? 'Đang duyệt...' : 'Duyệt'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => setConfirm({ kind: 'reject', user: u })}
+                    disabled={approvingId === u.id}
+                  >
+                    <UserX className="mr-1.5 h-4 w-4" />
+                    Từ chối
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
-          <CardTitle>Danh sách user ({users.length})</CardTitle>
+          <CardTitle>Danh sách user ({listedUsers.length})</CardTitle>
           <CardDescription>
             Số phiên đang hoạt động cập nhật theo Redis. Hành động ghi vào audit log.
           </CardDescription>
@@ -120,12 +200,12 @@ export function UsersPage({ currentUser }: Props) {
               <div className="rounded-md border bg-white px-4 py-8 text-center text-sm text-muted-foreground">
                 Đang tải...
               </div>
-            ) : users.length === 0 ? (
+            ) : listedUsers.length === 0 ? (
               <div className="rounded-md border bg-white px-4 py-8 text-center text-sm text-muted-foreground">
                 Chưa có user nào ngoài admin gốc. Click "Thêm user" để tạo.
               </div>
             ) : (
-              users.map((u) => (
+              listedUsers.map((u) => (
                 <div key={u.id} className="rounded-lg border bg-white p-3 shadow-sm">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
@@ -143,6 +223,11 @@ export function UsersPage({ currentUser }: Props) {
                         >
                           {u.role === 'admin' ? '★ Admin' : 'Nhân viên'}
                         </span>
+                        {u.status === 'rejected' && (
+                          <span className="inline-flex items-center rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold text-rose-700">
+                            Đã từ chối
+                          </span>
+                        )}
                       </div>
                       <div className="text-sm text-slate-700 truncate">{u.fullName}</div>
                       <div className="mt-1 text-xs text-slate-500">
@@ -192,14 +277,14 @@ export function UsersPage({ currentUser }: Props) {
                       Đang tải...
                     </TableCell>
                   </TableRow>
-                ) : users.length === 0 ? (
+                ) : listedUsers.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                       Chưa có user nào ngoài admin gốc. Click "Thêm user" để tạo.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  users.map((u) => (
+                  listedUsers.map((u) => (
                     <TableRow key={u.id} className="hover:bg-indigo-50/40 transition-colors">
                       <TableCell className="font-mono">
                         <span className="inline-flex items-center gap-2">
@@ -227,6 +312,11 @@ export function UsersPage({ currentUser }: Props) {
                         >
                           {u.role === 'admin' ? '★ Admin' : 'Nhân viên'}
                         </span>
+                        {u.status === 'rejected' && (
+                          <span className="ml-1.5 inline-flex items-center rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-semibold text-rose-700">
+                            Đã từ chối
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         <Badge variant="outline">{u.activeSessions}</Badge>
@@ -299,6 +389,8 @@ export function UsersPage({ currentUser }: Props) {
                 ? `Xoá user '${confirm.user.username}'?`
                 : confirm?.kind === 'logoutAll'
                 ? `Đăng xuất '${confirm.user.username}' khỏi mọi thiết bị?`
+                : confirm?.kind === 'reject'
+                ? `Từ chối đăng ký của '${confirm.user.username}'?`
                 : ''}
             </AlertDialogTitle>
             <AlertDialogDescription>
@@ -306,6 +398,8 @@ export function UsersPage({ currentUser }: Props) {
                 'Tài khoản sẽ bị soft-delete (giữ lại audit log). User sẽ không thể đăng nhập. Hành động có thể khôi phục qua SQL trong v1.'}
               {confirm?.kind === 'logoutAll' &&
                 'Tất cả phiên Redis hiện tại của user sẽ bị thu hồi. User cần đăng nhập lại để tiếp tục.'}
+              {confirm?.kind === 'reject' &&
+                'Tài khoản sẽ chuyển sang trạng thái "Đã từ chối" và không thể đăng nhập. Người dùng phải đăng ký lại nếu muốn tiếp tục.'}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -313,7 +407,11 @@ export function UsersPage({ currentUser }: Props) {
             <AlertDialogAction
               onClick={handleConfirmAction}
               disabled={confirmBusy}
-              className={confirm?.kind === 'delete' ? 'bg-destructive hover:bg-destructive/90' : undefined}
+              className={
+                confirm?.kind === 'delete' || confirm?.kind === 'reject'
+                  ? 'bg-destructive hover:bg-destructive/90'
+                  : undefined
+              }
             >
               {confirmBusy ? 'Đang xử lý...' : 'Xác nhận'}
             </AlertDialogAction>

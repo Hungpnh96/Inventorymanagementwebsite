@@ -37,6 +37,9 @@ public static class AuditActions
     public const string UserDelete = "user.delete";
     public const string UserPermissionsUpdate = "user.permissions.update";
     public const string UserLogoutAll = "user.logout_all";
+    public const string UserRegister = "user.register";
+    public const string UserApprove = "user.approve";
+    public const string UserReject = "user.reject";
 
     public const string DataClear = "data.clear";
     public const string DataRestore = "data.restore";

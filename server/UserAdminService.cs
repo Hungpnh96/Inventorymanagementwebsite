@@ -32,18 +32,42 @@ public sealed class UserAdminService
             SELECT id, username, username_lower AS UsernameLower, full_name AS FullName,
                    password_hash AS PasswordHash, role, must_change_password AS MustChangePassword,
                    failed_login_attempts AS FailedLoginAttempts, locked_until AS LockedUntil,
-                   created_at AS CreatedAt, updated_at AS UpdatedAt, deleted_at AS DeletedAt
+                   created_at AS CreatedAt, updated_at AS UpdatedAt, deleted_at AS DeletedAt,
+                   status
               FROM users WHERE deleted_at IS NULL ORDER BY created_at DESC")).ToList();
 
         var result = new List<UserListItem>(rows.Count);
         foreach (var r in rows)
         {
             var sessions = await _sessions.CountActiveAsync(r.Id);
-            result.Add(new UserListItem(
-                r.Id, r.Username, r.FullName, r.Role,
-                r.MustChangePassword, r.LockedUntil, r.CreatedAt, sessions));
+            result.Add(ToListItem(r, sessions));
         }
         return result;
+    }
+
+    private static UserListItem ToListItem(UserRow r, long activeSessions) =>
+        new(r.Id, r.Username, r.FullName, r.Role,
+            r.MustChangePassword, r.LockedUntil, r.CreatedAt, activeSessions, r.Status);
+
+    /// <summary>
+    /// Single-user variant of <see cref="ListAsync"/> — same projection, used to return the
+    /// fresh row after an approve/reject transition.
+    /// </summary>
+    private async Task<UserListItem?> GetUserListItemAsync(long id)
+    {
+        using var c = await _db.OpenAsync();
+        var row = await c.QuerySingleOrDefaultAsync<UserRow>(@"
+            SELECT id, username, username_lower AS UsernameLower, full_name AS FullName,
+                   password_hash AS PasswordHash, role, must_change_password AS MustChangePassword,
+                   failed_login_attempts AS FailedLoginAttempts, locked_until AS LockedUntil,
+                   created_at AS CreatedAt, updated_at AS UpdatedAt, deleted_at AS DeletedAt,
+                   status
+              FROM users WHERE id = @id AND deleted_at IS NULL",
+            new { id });
+        if (row is null) return null;
+
+        var sessions = await _sessions.CountActiveAsync(row.Id);
+        return ToListItem(row, sessions);
     }
 
     // ---------- CREATE ----------
@@ -78,7 +102,8 @@ public sealed class UserAdminService
             var item = new UserListItem(
                 id, username, body.FullName ?? "", body.Role,
                 MustChangePassword: true, LockedUntil: null,
-                CreatedAt: DateTime.UtcNow, ActiveSessions: 0);
+                CreatedAt: DateTime.UtcNow, ActiveSessions: 0,
+                Status: "active"); // admin-created users are active immediately (column default)
             return new CreateResult(true, null, item);
         }
         catch (Npgsql.PostgresException ex) when (ex.SqlState == "23505")
@@ -112,7 +137,7 @@ public sealed class UserAdminService
     public sealed record UpdateProfileResult(bool Ok, string? Error, UserListItem? Before, UserListItem? After);
 
     private sealed record UserProjection(long Id, string Username, string FullName, string Role,
-        bool MustChangePassword, DateTime? LockedUntil, DateTime CreatedAt);
+        bool MustChangePassword, DateTime? LockedUntil, DateTime CreatedAt, string Status);
 
     public async Task<UpdateProfileResult> UpdateProfileAsync(long targetUserId, string fullName)
     {
@@ -128,7 +153,8 @@ public sealed class UserAdminService
                    role AS Role,
                    must_change_password AS MustChangePassword,
                    locked_until AS LockedUntil,
-                   created_at AS CreatedAt
+                   created_at AS CreatedAt,
+                   status AS Status
               FROM users WHERE id = @id AND deleted_at IS NULL",
             new { id = targetUserId });
         if (existing is null)
@@ -137,7 +163,7 @@ public sealed class UserAdminService
         var before = new UserListItem(
             existing.Id, existing.Username, existing.FullName, existing.Role,
             existing.MustChangePassword, existing.LockedUntil, existing.CreatedAt,
-            ActiveSessions: 0);
+            ActiveSessions: 0, Status: existing.Status);
 
         await c.ExecuteAsync(
             "UPDATE users SET full_name = @fn, updated_at = NOW() WHERE id = @id",
@@ -161,7 +187,8 @@ public sealed class UserAdminService
             SELECT id, username, username_lower AS UsernameLower, full_name AS FullName,
                    password_hash AS PasswordHash, role, must_change_password AS MustChangePassword,
                    failed_login_attempts AS FailedLoginAttempts, locked_until AS LockedUntil,
-                   created_at AS CreatedAt, updated_at AS UpdatedAt, deleted_at AS DeletedAt
+                   created_at AS CreatedAt, updated_at AS UpdatedAt, deleted_at AS DeletedAt,
+                   status
               FROM users WHERE id = @id AND deleted_at IS NULL",
             new { id = targetUserId });
 
@@ -183,6 +210,48 @@ public sealed class UserAdminService
         await _sessions.RevokeAllForUserAsync(targetUserId);
 
         return new DeleteResult(true, null);
+    }
+
+    // ---------- APPROVE / REJECT (EPIC-007) ----------
+
+    /// <summary>
+    /// Activates a self-registered account. Deliberately does NOT grant any permissions:
+    /// approval only unblocks login, the admin assigns the matrix afterwards via
+    /// PUT /api/admin/users/{id}/permissions. With no permission rows, GetPermissionsAsync
+    /// naturally returns BlankMatrix().
+    /// </summary>
+    public async Task<ApproveRejectResult> ApproveAsync(long targetUserId)
+    {
+        using var c = await _db.OpenAsync();
+        var rows = await c.ExecuteAsync(
+            "UPDATE users SET status = 'active', updated_at = NOW() WHERE id = @id AND status = 'pending' AND deleted_at IS NULL",
+            new { id = targetUserId });
+        if (rows == 0)
+            return new ApproveRejectResult(false, "User không ở trạng thái chờ duyệt", null);
+
+        var updated = await GetUserListItemAsync(targetUserId);
+        return new ApproveRejectResult(true, null, updated);
+    }
+
+    /// <summary>
+    /// Marks a self-registered account as rejected. The row is kept (audit trail) but login
+    /// stays blocked. Only transitions FROM 'pending', so a stale UI cannot un-approve a user.
+    /// </summary>
+    public async Task<ApproveRejectResult> RejectAsync(long targetUserId)
+    {
+        using var c = await _db.OpenAsync();
+        var rows = await c.ExecuteAsync(
+            "UPDATE users SET status = 'rejected', updated_at = NOW() WHERE id = @id AND status = 'pending' AND deleted_at IS NULL",
+            new { id = targetUserId });
+        if (rows == 0)
+            return new ApproveRejectResult(false, "User không ở trạng thái chờ duyệt", null);
+
+        // Defensive: a pending user can never have had a session, but this keeps the
+        // "access revoked => sessions killed" invariant symmetric with SoftDeleteAsync.
+        await _sessions.RevokeAllForUserAsync(targetUserId);
+
+        var updated = await GetUserListItemAsync(targetUserId);
+        return new ApproveRejectResult(true, null, updated);
     }
 
     // ---------- PERMISSIONS ----------

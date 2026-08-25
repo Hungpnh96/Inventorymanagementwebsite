@@ -41,7 +41,8 @@ public class AuthService
             SELECT id, username, username_lower AS UsernameLower, full_name AS FullName,
                    password_hash AS PasswordHash, role, must_change_password AS MustChangePassword,
                    failed_login_attempts AS FailedLoginAttempts, locked_until AS LockedUntil,
-                   created_at AS CreatedAt, updated_at AS UpdatedAt, deleted_at AS DeletedAt
+                   created_at AS CreatedAt, updated_at AS UpdatedAt, deleted_at AS DeletedAt,
+                   status
             FROM users WHERE username_lower = @u AND deleted_at IS NULL",
             new { u = username.Trim().ToLowerInvariant() });
     }
@@ -53,7 +54,8 @@ public class AuthService
             SELECT id, username, username_lower AS UsernameLower, full_name AS FullName,
                    password_hash AS PasswordHash, role, must_change_password AS MustChangePassword,
                    failed_login_attempts AS FailedLoginAttempts, locked_until AS LockedUntil,
-                   created_at AS CreatedAt, updated_at AS UpdatedAt, deleted_at AS DeletedAt
+                   created_at AS CreatedAt, updated_at AS UpdatedAt, deleted_at AS DeletedAt,
+                   status
             FROM users WHERE id = @id AND deleted_at IS NULL",
             new { id });
     }
@@ -98,6 +100,52 @@ public class AuthService
 
     public int ExpiryHours => _expiryHours;
 
+    public sealed record RegisterResult(bool Ok, string? Error, long? UserId);
+
+    /// <summary>
+    /// EPIC-007 — public self-registration. The account lands in `pending` and cannot log in
+    /// until an admin approves it. `role` is hard-coded to 'user': self-registration must never
+    /// be able to mint an admin account.
+    /// </summary>
+    public async Task<RegisterResult> RegisterAsync(string username, string password, string fullName)
+    {
+        if (string.IsNullOrWhiteSpace(username))
+            return new RegisterResult(false, "Username là bắt buộc", null);
+        if (string.IsNullOrEmpty(password) || password.Length < 8)
+            return new RegisterResult(false, "Password phải có ít nhất 8 ký tự", null);
+
+        var u = username.Trim();
+        var ul = u.ToLowerInvariant();
+        var hash = HashPassword(password);
+
+        try
+        {
+            using var c = await _db.OpenAsync();
+            var id = await c.ExecuteScalarAsync<long>(@"
+                INSERT INTO users (username, username_lower, full_name, password_hash, role, must_change_password, status)
+                VALUES (@u, @ul, @fn, @h, 'user', FALSE, 'pending')
+                RETURNING id",
+                new { u, ul, fn = fullName?.Trim() ?? "", h = hash });
+            return new RegisterResult(true, null, id);
+        }
+        catch (Npgsql.PostgresException ex) when (ex.SqlState == "23505")
+        {
+            return new RegisterResult(false, "Username đã tồn tại", null);
+        }
+    }
+
+    /// <summary>
+    /// Idempotent DDL guard. Db/005_user_status.sql only runs on FIRST boot of the postgres
+    /// container (docker-entrypoint-initdb.d), so already-provisioned databases would otherwise
+    /// never get the column. Same statement, safe to re-run.
+    /// </summary>
+    public async Task EnsureUserStatusColumnAsync()
+    {
+        using var c = await _db.OpenAsync();
+        await c.ExecuteAsync(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('pending','active','rejected'))");
+    }
+
     public async Task SeedAdminIfMissingAsync(string username, string password)
     {
         using var c = await _db.OpenAsync();
@@ -124,5 +172,6 @@ public record UserRow(
     DateTime? LockedUntil,
     DateTime CreatedAt,
     DateTime UpdatedAt,
-    DateTime? DeletedAt
+    DateTime? DeletedAt,
+    string Status
 );

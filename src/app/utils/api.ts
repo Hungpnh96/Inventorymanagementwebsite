@@ -81,6 +81,26 @@ export async function login(username: string, password: string): Promise<LoginRe
   };
 }
 
+/**
+ * Public self-registration. Deliberately sends NO Authorization header — it runs before any
+ * session exists (same as `login` above). No token is issued: the account lands in 'pending'
+ * and an admin must approve it before the user can log in.
+ */
+export async function register(
+  username: string,
+  password: string,
+  fullName: string,
+): Promise<{ ok: true; message: string }> {
+  const res = await fetch(`${BASE}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password, fullName }),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  const body = normalize<{ ok: boolean; message: string }>(await res.json());
+  return { ok: true, message: body.message };
+}
+
 export async function fetchMe(): Promise<{ user: User; mustChangePassword: boolean } | null> {
   const res = await fetch(`${BASE}/auth/me`, { headers: authHeaders() });
   if (res.status === 401) return null;
@@ -119,6 +139,8 @@ export interface AdminUser {
   lockedUntil: string | null;
   createdAt: string;
   activeSessions: number;
+  /** Self-registered accounts start as 'pending' and only become usable after an admin approves. */
+  status: 'pending' | 'active' | 'rejected';
 }
 
 export type PermissionMatrix = Record<string, Record<string, boolean>>;
@@ -167,6 +189,20 @@ export async function adminUpdateUser(id: number, input: { fullName: string }): 
 export async function adminDeleteUser(id: number): Promise<void> {
   const res = await fetch(`${BASE}/admin/users/${id}`, { method: 'DELETE', headers: authHeaders() });
   if (!res.ok) throw new Error(await readError(res));
+}
+
+/** Approve a pending self-registration. Returns the user's fresh state (status: 'active'). */
+export async function adminApproveUser(id: number): Promise<AdminUser> {
+  const res = await fetch(`${BASE}/admin/users/${id}/approve`, { method: 'POST', headers: authHeaders() });
+  if (!res.ok) throw new Error(await readError(res));
+  return normalize<AdminUser>(await res.json());
+}
+
+/** Reject a pending self-registration. Returns the user's fresh state (status: 'rejected'). */
+export async function adminRejectUser(id: number): Promise<AdminUser> {
+  const res = await fetch(`${BASE}/admin/users/${id}/reject`, { method: 'POST', headers: authHeaders() });
+  if (!res.ok) throw new Error(await readError(res));
+  return normalize<AdminUser>(await res.json());
 }
 
 export async function adminGetPermissions(id: number): Promise<PermissionMatrix> {
