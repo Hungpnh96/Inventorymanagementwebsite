@@ -1,0 +1,51 @@
+/* EPIC-005 — accent palette + toast variants + table hover.
+ * Imported AFTER existing styles. Additive only — never overrides shadcn defaults. */
+
+:root {
+  /* Semantic accent palette (used by notify.* + status badges). */
+  --accent-success-50: #ecfdf5;
+  --accent-success-500: #10b981;
+  --accent-success-700: #047857;
+  --accent-error-50: #fef2f2;
+  --accent-error-500: #ef4444;
+  --accent-error-700: #b91c1c;
+  --accent-warn-50: #fffbeb;
+  --accent-warn-500: #f59e0b;
+  --accent-warn-700: #b45309;
+  --accent-info-50: #eff6ff;
+  --accent-info-500: #3b82f6;
+  --accent-info-700: #1d4ed8;
+}
+
+/* ---------- Sonner toast variants ----------
+ * Driven by className from notify.* in src/app/design/toast-config.tsx.
+ * !important is required because Sonner applies inline styles via CSS vars
+ * (--normal-bg, --normal-text, --normal-border) that beat ordinary class rules.
+ * If Sonner ever exposes a class-merge API, drop these !important. */
+[data-sonner-toast].toast-success {
+  background: var(--accent-success-50) !important;
+  color: var(--accent-success-700) !important;
+  border-color: var(--accent-success-500) !important;
+}
+[data-sonner-toast].toast-error {
+  background: var(--accent-error-50) !important;
+  color: var(--accent-error-700) !important;
+  border-color: var(--accent-error-500) !important;
+}
+[data-sonner-toast].toast-warn {
+  background: var(--accent-warn-50) !important;
+  color: var(--accent-warn-700) !important;
+  border-color: var(--accent-warn-500) !important;
+}
+[data-sonner-toast].toast-info {
+  background: var(--accent-info-50) !important;
+  color: var(--accent-info-700) !important;
+  border-color: var(--accent-info-500) !important;
+}
+
+/* ---------- Table row hover (AC07) ---------- */
+tbody tr.epic005-row:hover,
+tbody tr[data-epic005-hover]:hover {
+  background-color: rgb(249 250 251);
+  transition: background-color 80ms ease-out;
+}

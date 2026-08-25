@@ -1,0 +1,28 @@
+/* Inter via Google Fonts CDN with optional swap + variable font weights 100..900.
+ * Tailwind v4 picks up `--font-sans` via @theme inline; we override below. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=JetBrains+Mono:wght@400..700&display=swap');
+
+:root {
+  --font-sans:
+    'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue',
+    Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+  --font-mono:
+    'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+    monospace;
+}
+
+html,
+body {
+  font-family: var(--font-sans);
+  font-feature-settings:
+    'cv11', /* alt 4 */ 'ss01', /* compact a */ 'ss03'; /* compact g */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+code,
+kbd,
+.font-mono {
+  font-family: var(--font-mono);
+}

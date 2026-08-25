@@ -1,0 +1,76 @@
+{
+  "id": "EPIC-005",
+  "title": "Nâng cấp giao diện",
+  "description": "Giao diện tổng quan đa số chỉ trắng và đen. Nên tôi cần\n- Cập nhật giao diện các màn hình trông sinh động hơn ( màu sắc , table , ... )\n- Message thông báo notify đẹp hơn. \n- các form tìm kiếm, button ( thêm / xoá / sửa ) , icon ( cập nhật, thêm quyền , xoá , ... ) cần thống nhất và thêm màu sắc",
+  "pipeline": "EPIC-005",
+  "agent": null,
+  "agents": [
+    "aidlc-tech-lead",
+    "aidlc-developer",
+    "aidlc-qa"
+  ],
+  "currentStep": 2,
+  "status": "in_progress",
+  "createdAt": "2026-06-13T12:34:26.547Z",
+  "stepStates": [
+    {
+      "agent": "aidlc-tech-lead",
+      "status": "done",
+      "revision": 1,
+      "runStatus": "approved",
+      "startedAt": "2026-06-13T12:34:26.547Z",
+      "finishedAt": "2026-06-13T12:48:33.302Z",
+      "history": [
+        {
+          "kind": "approve",
+          "at": "2026-06-13T12:48:33.302Z",
+          "revision": 1
+        }
+      ],
+      "artifactsProduced": [
+        "docs/epics/EPIC-005/artifacts/TECH-DESIGN.md"
+      ]
+    },
+    {
+      "agent": "aidlc-developer",
+      "status": "done",
+      "revision": 1,
+      "runStatus": "approved",
+      "startedAt": "2026-06-13T12:48:33.302Z",
+      "finishedAt": "2026-06-13T13:01:47.382Z",
+      "autoReviewVerdict": {
+        "decision": "pass",
+        "reason": "No CI checks configured — add commands to .aidlc/validators/ci.mjs to enforce lint/typecheck/test.",
+        "at": "2026-06-13T13:01:46.420Z",
+        "runner": "/Users/hung/Documents/HungPNH/Work/ECom/Inventorymanagementwebsite/.aidlc/validators/ci.mjs"
+      },
+      "history": [
+        {
+          "kind": "auto_review",
+          "at": "2026-06-13T13:01:46.420Z",
+          "revision": 1,
+          "decision": "pass",
+          "reason": "No CI checks configured — add commands to .aidlc/validators/ci.mjs to enforce lint/typecheck/test.",
+          "runner": "/Users/hung/Documents/HungPNH/Work/ECom/Inventorymanagementwebsite/.aidlc/validators/ci.mjs"
+        },
+        {
+          "kind": "approve",
+          "at": "2026-06-13T13:01:47.382Z",
+          "revision": 1
+        }
+      ],
+      "artifactsProduced": []
+    },
+    {
+      "agent": "aidlc-qa",
+      "status": "in_progress",
+      "revision": 1,
+      "runStatus": "awaiting_work",
+      "startedAt": "2026-06-13T13:01:47.382Z",
+      "finishedAt": null,
+      "history": [],
+      "artifactsProduced": []
+    }
+  ],
+  "updatedAt": "2026-06-13T13:01:47.382Z"
+}

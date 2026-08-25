@@ -16,14 +16,28 @@ export interface Transaction {
   tenSanPham: string;
   type: 'import' | 'export';
   quantity: number;
+  unitPrice: number;
   date: Date;
   note?: string;
   user: string;
 }
 
+export interface PriceHistoryRow {
+  id: string;
+  date: Date;
+  type: 'import' | 'export';
+  quantity: number;
+  unitPrice: number;
+  note?: string;
+  user: string;
+}
+
+export type PermissionMatrix = Record<string, Record<string, boolean>>;
+
 export interface User {
   username: string;
   role: 'admin' | 'user';
+  permissions?: PermissionMatrix;
 }
 
 export interface InventoryData {

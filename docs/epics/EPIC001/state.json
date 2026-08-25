@@ -1,0 +1,84 @@
+{
+  "id": "EPIC001",
+  "title": "Quản lý kho - Tìm kiếm nhanh",
+  "description": "Ở màn hình quản lý kho cho phép tìm kiếm nhanh ( để dễ dàng chỉnh sửa )",
+  "pipeline": "EPIC001",
+  "agent": null,
+  "agents": [
+    "aidlc-po",
+    "aidlc-developer",
+    "aidlc-qa"
+  ],
+  "currentStep": 2,
+  "status": "done",
+  "createdAt": "2026-06-13T08:40:48.260Z",
+  "stepStates": [
+    {
+      "agent": "aidlc-po",
+      "status": "done",
+      "revision": 1,
+      "runStatus": "approved",
+      "startedAt": "2026-06-13T08:40:48.260Z",
+      "finishedAt": "2026-06-13T08:44:36.298Z",
+      "history": [
+        {
+          "kind": "approve",
+          "at": "2026-06-13T08:44:36.298Z",
+          "revision": 1
+        }
+      ],
+      "artifactsProduced": [
+        "docs/epics/EPIC001/artifacts/PRD.md"
+      ]
+    },
+    {
+      "agent": "aidlc-developer",
+      "status": "done",
+      "revision": 1,
+      "runStatus": "approved",
+      "startedAt": "2026-06-13T08:44:36.298Z",
+      "finishedAt": "2026-06-13T08:49:15.741Z",
+      "autoReviewVerdict": {
+        "decision": "pass",
+        "reason": "No CI checks configured — add commands to .aidlc/validators/ci.mjs to enforce lint/typecheck/test.",
+        "at": "2026-06-13T08:49:14.520Z",
+        "runner": "/Users/hung/Documents/HungPNH/Work/ECom/Inventorymanagementwebsite/.aidlc/validators/ci.mjs"
+      },
+      "history": [
+        {
+          "kind": "auto_review",
+          "at": "2026-06-13T08:49:14.520Z",
+          "revision": 1,
+          "decision": "pass",
+          "reason": "No CI checks configured — add commands to .aidlc/validators/ci.mjs to enforce lint/typecheck/test.",
+          "runner": "/Users/hung/Documents/HungPNH/Work/ECom/Inventorymanagementwebsite/.aidlc/validators/ci.mjs"
+        },
+        {
+          "kind": "approve",
+          "at": "2026-06-13T08:49:15.741Z",
+          "revision": 1
+        }
+      ],
+      "artifactsProduced": []
+    },
+    {
+      "agent": "aidlc-qa",
+      "status": "done",
+      "revision": 1,
+      "runStatus": "approved",
+      "startedAt": "2026-06-13T08:49:15.741Z",
+      "finishedAt": "2026-06-13T08:52:28.094Z",
+      "history": [
+        {
+          "kind": "approve",
+          "at": "2026-06-13T08:52:28.094Z",
+          "revision": 1
+        }
+      ],
+      "artifactsProduced": [
+        "docs/epics/EPIC001/artifacts/TEST-SCRIPT.md"
+      ]
+    }
+  ],
+  "updatedAt": "2026-06-13T08:52:28.094Z"
+}
