@@ -20,6 +20,7 @@ var jwtExpiryHours = int.Parse(Environment.GetEnvironmentVariable("JWT_EXPIRY_HO
 var defaultAdminUsername = Environment.GetEnvironmentVariable("DEFAULT_ADMIN_USERNAME") ?? "admin";
 var defaultAdminPassword = Environment.GetEnvironmentVariable("DEFAULT_ADMIN_PASSWORD");
 var legacyXlsxPath = Environment.GetEnvironmentVariable("LEGACY_INVENTORY_FILE") ?? "/data/inventory.xlsx";
+var dataBackupDir = Environment.GetEnvironmentVariable("DATA_BACKUP_DIR") ?? "/data/backups";
 var allowedOriginsRaw = Environment.GetEnvironmentVariable("ALLOWED_ORIGINS")
     ?? "http://localhost:5173,http://localhost:8080";
 var allowedOrigins = allowedOriginsRaw
@@ -56,6 +57,7 @@ builder.Services.AddSingleton<IAuditLogger, AuditLogger>();
 builder.Services.AddSingleton(sp => new AuthService(sp.GetRequiredService<Db>(), jwtSecret, jwtIssuer, jwtAudience, jwtExpiryHours));
 builder.Services.AddSingleton(sp => new PostgresStore(sp.GetRequiredService<Db>()));
 builder.Services.AddSingleton(_ => new ExcelStore(legacyXlsxPath));
+builder.Services.AddSingleton(_ => new BackupService(dataBackupDir));
 builder.Services.AddSingleton<UserAdminService>();
 builder.Services.AddSingleton<AuditQueryService>();
 builder.Services.AddSingleton<PermissionService>();
@@ -298,6 +300,30 @@ static Dictionary<string, Dictionary<string, bool>> AdminAllAllowedMatrix()
     return m;
 }
 
+// Password reset REQUEST (public; no auth needed) — user without login asks admin to reset.
+// We just append to audit_logs so admin can see in audit screen and act manually.
+app.MapPost("/api/auth/password-reset-request", async (
+    PasswordResetRequest body,
+    HttpContext ctx,
+    IAuditLogger audit) =>
+{
+    var username = (body.Username ?? "").Trim();
+    var reason = (body.Reason ?? "").Trim();
+    if (string.IsNullOrEmpty(username))
+        return Results.BadRequest(new { error = "Thiếu tên đăng nhập" });
+    if (username.Length > 64 || reason.Length > 500)
+        return Results.BadRequest(new { error = "Username/lý do quá dài" });
+
+    await audit.LogAsync(
+        AuditActions.PasswordResetRequest,
+        "user", null,
+        null, username, "anonymous",
+        null,
+        new { username, reason = string.IsNullOrEmpty(reason) ? null : reason, requestedAt = DateTime.UtcNow },
+        ClientIp(ctx), AuditContext.GetUserAgent(ctx));
+    return Results.Ok(new { ok = true, message = "Yêu cầu đã được ghi nhận. Quản trị viên sẽ liên hệ lại." });
+});
+
 app.MapPost("/api/auth/logout", async (
     HttpContext ctx,
     ClaimsPrincipal user,
@@ -438,6 +464,14 @@ app.MapPut("/api/products/{sku}", async (
     }
 }).RequirePermission("inventory", "update");
 
+// Price history — all transactions for a SKU with unit_price, oldest first
+app.MapGet("/api/products/{sku}/price-history", async (
+    string sku, ClaimsPrincipal user, PostgresStore store) =>
+{
+    var rows = await store.GetPriceHistoryAsync(sku);
+    return Results.Ok(rows);
+}).RequireAuthorization();
+
 app.MapDelete("/api/products/{sku}", async (
     string sku, HttpContext ctx, ClaimsPrincipal user,
     PostgresStore store, IAuditLogger audit) =>
@@ -577,6 +611,89 @@ app.MapPost("/api/admin/users/{id:long}/logout-all", async (
         null, new { sessionsRevoked = killed },
         ClientIp(ctx), AuditContext.GetUserAgent(ctx));
     return Results.Ok(new { sessionsRevoked = killed });
+}).RequireAuthorization();
+
+// ---------- Admin: Data (clear/backup/restore) ----------
+app.MapPost("/api/admin/data/clear", async (
+    ClearDataRequest body, HttpContext ctx, ClaimsPrincipal user,
+    PostgresStore store, BackupService backups, IAuditLogger audit) =>
+{
+    if (!IsAdmin(user)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+    // Server-side confirmation — never trust the FE dialog alone.
+    if (body?.ConfirmText != "XOA")
+        return Results.BadRequest(new { error = "Từ khoá xác nhận không đúng" });
+
+    var before = await store.ReadAsync();
+    var backupFile = await backups.CreateBackupAsync(before);
+    await store.ClearInventoryDataAsync();
+    await audit.LogAsync(AuditActions.DataClear, "inventory", null,
+        UserId(user), Username(user), Role(user), null,
+        new
+        {
+            backupFile,
+            productsCleared = before.Products.Count,
+            transactionsCleared = before.Transactions.Count,
+        },
+        ClientIp(ctx), AuditContext.GetUserAgent(ctx));
+    return Results.Ok(new { backupFile, data = await store.ReadAsync() });
+}).RequireAuthorization();
+
+app.MapGet("/api/admin/data/backups", async (ClaimsPrincipal user, BackupService backups) =>
+{
+    if (!IsAdmin(user)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+    return Results.Ok(await backups.ListBackupsAsync());
+}).RequireAuthorization();
+
+app.MapGet("/api/admin/data/backups/{fileName}/download", (
+    string fileName, ClaimsPrincipal user, BackupService backups) =>
+{
+    if (!IsAdmin(user)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+    string path;
+    try { path = backups.GetBackupFilePath(fileName); }
+    catch (ArgumentException ex) { return Results.BadRequest(new { error = ex.Message }); }
+    if (!File.Exists(path)) return Results.NotFound(new { error = "Bản sao lưu không tồn tại" });
+    return Results.File(path, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+}).RequireAuthorization();
+
+app.MapPost("/api/admin/data/backups/{fileName}/restore", async (
+    string fileName, HttpContext ctx, ClaimsPrincipal user,
+    PostgresStore store, BackupService backups, IAuditLogger audit) =>
+{
+    if (!IsAdmin(user)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+
+    InventoryData restoreData;
+    string safetyBackup;
+    try
+    {
+        // Load the snapshot into memory BEFORE taking the safety backup: rotation keeps only
+        // the 3 newest files, so writing the safety backup first could delete the very file
+        // being restored. Also avoids burning a rotation slot on a bad file name.
+        restoreData = await backups.ReadBackupAsync(fileName);
+        // Snapshot the current state so a wrong restore is itself undoable.
+        var current = await store.ReadAsync();
+        safetyBackup = await backups.CreateBackupAsync(current);
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+    catch (FileNotFoundException)
+    {
+        return Results.NotFound(new { error = "Bản sao lưu không tồn tại" });
+    }
+
+    await store.RestoreInventoryAsync(restoreData);
+    await audit.LogAsync(AuditActions.DataRestore, "inventory", fileName,
+        UserId(user), Username(user), Role(user), null,
+        new
+        {
+            restoredFrom = fileName,
+            safetyBackup,
+            productsRestored = restoreData.Products.Count,
+            transactionsRestored = restoreData.Transactions.Count,
+        },
+        ClientIp(ctx), AuditContext.GetUserAgent(ctx));
+    return Results.Ok(new { restoredFrom = fileName, safetyBackup, data = await store.ReadAsync() });
 }).RequireAuthorization();
 
 // ---------- Admin: Audit (EPIC-003 S4) ----------

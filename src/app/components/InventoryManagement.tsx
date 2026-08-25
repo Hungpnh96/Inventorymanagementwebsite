@@ -6,18 +6,15 @@ import { Product, User } from '../types';
 import { exportToExcel } from '../utils/excelUtils';
 import { importInventoryXlsx, replaceProducts, deleteProduct, updateProduct } from '../utils/api';
 import { filterProducts, sanitizeQuery } from '../utils/searchUtils';
-import { Upload, Download, Pencil, Trash2, RefreshCw, Search, X } from 'lucide-react';
+import { Upload, Download, Pencil, Trash2, RefreshCw, Search, X, PackageSearch, Inbox, Save, LineChart as LineChartIcon } from 'lucide-react';
+import { EmptyState } from './ui-ext/EmptyState';
+import { TableSkeleton, CardSkeleton } from './ui-ext/Skeletons';
+import { useConfirm } from './ui-ext/ConfirmDialog';
+import { PriceHistoryDialog } from './PriceHistoryDialog';
 import { toast } from 'sonner';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from './ui/dialog';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from './ui/sheet';
 
 interface InventoryManagementProps {
   products: Product[];
@@ -35,7 +32,9 @@ export function InventoryManagement({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [priceHistoryProduct, setPriceHistoryProduct] = useState<Product | null>(null);
   const [busy, setBusy] = useState(false);
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [searchInput, setSearchInput] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
 
@@ -127,18 +126,50 @@ export function InventoryManagement({
     }
   };
 
-  const handleDelete = async (maSKU: string) => {
-    if (!confirm('Xoá sản phẩm này VÀ toàn bộ lịch sử giao dịch của nó khỏi báo cáo?')) return;
-    setBusy(true);
-    try {
-      await deleteProduct(currentUser, maSKU);
-      onRefresh();
-      toast.success('Đã xoá sản phẩm và lịch sử giao dịch liên quan');
-    } catch (e: any) {
-      toast.error(e.message || 'Không xoá được');
-    } finally {
-      setBusy(false);
-    }
+  const handleDelete = async (product: Product) => {
+    const ok = await confirm({
+      variant: 'danger',
+      title: 'Xoá sản phẩm này?',
+      description: (
+        <span>
+          Sản phẩm <strong className="font-mono">{product.maSKU}</strong> —{' '}
+          <strong>{product.tenSanPham}</strong> và <strong>toàn bộ lịch sử giao dịch</strong> của nó
+          sẽ bị xoá khỏi hệ thống. Bạn có 5 giây để hoàn tác sau khi xác nhận.
+        </span>
+      ),
+      confirmText: 'Xoá vĩnh viễn',
+      cancelText: 'Huỷ',
+      requireTyping: product.maSKU,
+    });
+    if (!ok) return;
+
+    // Soft-delete pattern: schedule real delete after 5s; user can undo via toast button.
+    let cancelled = false;
+    const timerId = window.setTimeout(async () => {
+      if (cancelled) return;
+      setBusy(true);
+      try {
+        await deleteProduct(currentUser, product.maSKU);
+        onRefresh();
+      } catch (e: any) {
+        toast.error(e.message || 'Không xoá được');
+      } finally {
+        setBusy(false);
+      }
+    }, 5000);
+
+    toast(`Sẽ xoá ${product.maSKU} sau 5 giây...`, {
+      description: product.tenSanPham,
+      duration: 5000,
+      action: {
+        label: 'Hoàn tác',
+        onClick: () => {
+          cancelled = true;
+          window.clearTimeout(timerId);
+          toast.success('Đã huỷ xoá');
+        },
+      },
+    });
   };
 
   const formatCurrency = (value: number) => {
@@ -239,19 +270,41 @@ export function InventoryManagement({
           </div>
           {/* Mobile card list (under md). Built from the same filteredProducts so search works. */}
           <div className="md:hidden space-y-3">
-            {products.length === 0 ? (
-              <div className="rounded-md border bg-white px-4 py-8 text-center text-sm text-muted-foreground">
-                Chưa có sản phẩm nào. {currentUser.role === 'admin' ? 'Hãy import file Excel để bắt đầu.' : ''}
-              </div>
+            {busy && products.length === 0 ? (
+              <CardSkeleton count={3} />
+            ) : products.length === 0 ? (
+              <EmptyState
+                icon={Inbox}
+                title="Kho đang rỗng"
+                description={
+                  currentUser.role === 'admin'
+                    ? 'Hãy import file Excel để bắt đầu quản lý sản phẩm'
+                    : 'Cần admin import dữ liệu ban đầu'
+                }
+                action={
+                  currentUser.role === 'admin' ? (
+                    <Button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                    >
+                      <Upload className="mr-2 h-4 w-4" />
+                      Import Excel
+                    </Button>
+                  ) : undefined
+                }
+              />
             ) : filteredProducts.length === 0 ? (
-              <div className="rounded-md border bg-white px-4 py-8 text-center text-sm text-muted-foreground">
-                <div className="flex flex-col items-center gap-2">
-                  <span>Không tìm thấy sản phẩm khớp với "{activeQuery}".</span>
+              <EmptyState
+                compact
+                icon={PackageSearch}
+                title="Không có kết quả"
+                description={`Không tìm thấy sản phẩm khớp với "${activeQuery}"`}
+                action={
                   <Button variant="outline" size="sm" onClick={clearSearch}>
                     Xoá bộ lọc
                   </Button>
-                </div>
-              </div>
+                }
+              />
             ) : (
               filteredProducts.map((product) => {
                 const lowStock = product.tonKho < 10;
@@ -291,36 +344,51 @@ export function InventoryManagement({
                         <div className="font-semibold text-slate-900">{formatCurrency(product.giaTriKho)}</div>
                       </div>
                     </div>
-                    {currentUser.role === 'admin' && (
-                      <div className="mt-3 flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleEdit(product)}
-                          className="flex-1 border-amber-200 text-amber-700 hover:bg-amber-50"
-                        >
-                          <Pencil className="mr-1.5 h-4 w-4" /> Sửa
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDelete(product.maSKU)}
-                          className="flex-1 border-rose-200 text-rose-700 hover:bg-rose-50"
-                        >
-                          <Trash2 className="mr-1.5 h-4 w-4" /> Xoá
-                        </Button>
-                      </div>
-                    )}
+                    <div className="mt-3 flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPriceHistoryProduct(product)}
+                        className="flex-1 border-indigo-200 text-indigo-700 hover:bg-indigo-50 dark:border-indigo-500/30 dark:text-indigo-400"
+                      >
+                        <LineChartIcon className="mr-1.5 h-4 w-4" /> Giá
+                      </Button>
+                      {currentUser.role === 'admin' && (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleEdit(product)}
+                            className="flex-1 border-amber-200 text-amber-700 hover:bg-amber-50"
+                          >
+                            <Pencil className="mr-1.5 h-4 w-4" /> Sửa
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDelete(product)}
+                            className="flex-1 border-rose-200 text-rose-700 hover:bg-rose-50"
+                          >
+                            <Trash2 className="mr-1.5 h-4 w-4" /> Xoá
+                          </Button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 );
               })
             )}
           </div>
 
-          {/* Desktop table (md+) */}
-          <div className="hidden md:block rounded-md border overflow-x-auto">
+          {/* Desktop table (md+) — sticky header + max-height vertical scroll */}
+          <div className="hidden md:block rounded-md border bg-card overflow-auto max-h-[68vh]">
+            {busy && products.length === 0 ? (
+              <div className="p-3">
+                <TableSkeleton rows={6} cols={9} />
+              </div>
+            ) : (
             <Table>
-              <TableHeader className="bg-slate-50">
+              <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur dark:bg-slate-900/80">
                 <TableRow>
                   <TableHead className="w-[60px] font-semibold text-slate-700">STT</TableHead>
                   <TableHead className="font-semibold text-slate-700">Loại hàng</TableHead>
@@ -330,27 +398,49 @@ export function InventoryManagement({
                   <TableHead className="text-right font-semibold text-slate-700">Tồn kho</TableHead>
                   <TableHead className="text-right font-semibold text-slate-700">Giá vốn</TableHead>
                   <TableHead className="text-right font-semibold text-slate-700">Giá trị kho</TableHead>
-                  {currentUser.role === 'admin' && (
-                    <TableHead className="text-right w-[100px] font-semibold text-slate-700">Thao tác</TableHead>
-                  )}
+                  <TableHead className="text-right w-[140px] font-semibold text-slate-700">Thao tác</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {products.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={currentUser.role === 'admin' ? 9 : 8} className="text-center py-8 text-muted-foreground">
-                      Chưa có sản phẩm nào. Hãy import file Excel để bắt đầu.
+                    <TableCell colSpan={9} className="p-0">
+                      <EmptyState
+                        icon={Inbox}
+                        title="Kho đang rỗng"
+                        description={
+                          currentUser.role === 'admin'
+                            ? 'Hãy import file Excel để bắt đầu quản lý sản phẩm'
+                            : 'Cần admin import dữ liệu ban đầu'
+                        }
+                        action={
+                          currentUser.role === 'admin' ? (
+                            <Button
+                              onClick={() => fileInputRef.current?.click()}
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                            >
+                              <Upload className="mr-2 h-4 w-4" />
+                              Import Excel
+                            </Button>
+                          ) : undefined
+                        }
+                      />
                     </TableCell>
                   </TableRow>
                 ) : filteredProducts.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={currentUser.role === 'admin' ? 9 : 8} className="text-center py-8 text-muted-foreground">
-                      <div className="flex flex-col items-center gap-2">
-                        <span>Không tìm thấy sản phẩm khớp với "{activeQuery}".</span>
-                        <Button variant="outline" size="sm" onClick={clearSearch}>
-                          Xoá bộ lọc
-                        </Button>
-                      </div>
+                    <TableCell colSpan={9} className="p-0">
+                      <EmptyState
+                        compact
+                        icon={PackageSearch}
+                        title="Không có kết quả"
+                        description={`Không tìm thấy sản phẩm khớp với "${activeQuery}"`}
+                        action={
+                          <Button variant="outline" size="sm" onClick={clearSearch}>
+                            Xoá bộ lọc
+                          </Button>
+                        }
+                      />
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -379,122 +469,190 @@ export function InventoryManagement({
                         </TableCell>
                         <TableCell className="text-right text-slate-700">{formatCurrency(product.giaVon)}</TableCell>
                         <TableCell className="text-right font-semibold text-slate-900">{formatCurrency(product.giaTriKho)}</TableCell>
-                        {currentUser.role === 'admin' && (
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-1">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleEdit(product)}
-                                className="text-amber-600 hover:bg-amber-50 hover:text-amber-700"
-                                aria-label="Sửa sản phẩm"
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleDelete(product.maSKU)}
-                                className="text-rose-600 hover:bg-rose-50 hover:text-rose-700"
-                                aria-label="Xoá sản phẩm"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        )}
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setPriceHistoryProduct(product)}
+                              className="text-indigo-600 hover:bg-indigo-50 hover:text-indigo-700 dark:hover:bg-indigo-500/10"
+                              aria-label="Lịch sử giá"
+                              title="Xem lịch sử giá & giao dịch"
+                            >
+                              <LineChartIcon className="h-4 w-4" />
+                            </Button>
+                            {currentUser.role === 'admin' && (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleEdit(product)}
+                                  className="text-amber-600 hover:bg-amber-50 hover:text-amber-700"
+                                  aria-label="Sửa sản phẩm"
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleDelete(product)}
+                                  className="text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                                  aria-label="Xoá sản phẩm"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </TableCell>
                       </TableRow>
                     );
                   })
                 )}
               </TableBody>
             </Table>
+            )}
           </div>
         </CardContent>
       </Card>
 
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Chỉnh sửa sản phẩm</DialogTitle>
-            <DialogDescription>
-              Cập nhật thông tin sản phẩm
-            </DialogDescription>
-          </DialogHeader>
-          {editingProduct && (
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Loại hàng</Label>
-                <Input
-                  value={editingProduct.loaiHang}
-                  onChange={(e) => setEditingProduct({ ...editingProduct, loaiHang: e.target.value })}
-                />
+      {/* Slide-over edit panel — replaces Dialog for richer multi-section UX */}
+      <Sheet open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-xl p-0 flex flex-col">
+          <SheetHeader className="border-b p-4 sm:p-6">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-500/15">
+                <Pencil className="h-5 w-5 text-amber-600 dark:text-amber-400" />
               </div>
-              <div className="space-y-2">
-                <Label>Mã SKU</Label>
-                <Input
-                  value={editingProduct.maSKU}
-                  onChange={(e) => setEditingProduct({ ...editingProduct, maSKU: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2 col-span-2">
-                <Label>Tên sản phẩm</Label>
-                <Input
-                  value={editingProduct.tenSanPham}
-                  onChange={(e) => setEditingProduct({ ...editingProduct, tenSanPham: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Đơn vị tính</Label>
-                <Input
-                  value={editingProduct.donViTinh}
-                  onChange={(e) => setEditingProduct({ ...editingProduct, donViTinh: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Tồn kho</Label>
-                <Input
-                  type="number"
-                  value={editingProduct.tonKho}
-                  onChange={(e) => setEditingProduct({ ...editingProduct, tonKho: Number(e.target.value) })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Giá vốn</Label>
-                <Input
-                  type="number"
-                  value={editingProduct.giaVon}
-                  onChange={(e) => {
-                    const giaVon = Number(e.target.value);
-                    setEditingProduct({
-                      ...editingProduct,
-                      giaVon,
-                      giaTriKho: giaVon * editingProduct.tonKho
-                    });
-                  }}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Giá trị kho</Label>
-                <Input
-                  type="number"
-                  value={editingProduct.giaTriKho}
-                  disabled
-                />
+              <div>
+                <SheetTitle>Chỉnh sửa sản phẩm</SheetTitle>
+                <SheetDescription className="text-xs">
+                  {editingProduct ? (
+                    <>
+                      Thay đổi tồn kho sẽ tự ghi <strong>1 dòng giao dịch</strong> vào lịch sử.
+                    </>
+                  ) : null}
+                </SheetDescription>
               </div>
             </div>
+          </SheetHeader>
+
+          {editingProduct && (
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+              {/* Section 1: Định danh */}
+              <section className="space-y-3">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Định danh
+                </div>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Mã SKU</Label>
+                    <Input
+                      className="font-mono"
+                      value={editingProduct.maSKU}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, maSKU: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Loại hàng</Label>
+                    <Input
+                      value={editingProduct.loaiHang}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, loaiHang: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label className="text-xs">Tên sản phẩm</Label>
+                    <Input
+                      value={editingProduct.tenSanPham}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, tenSanPham: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Đơn vị tính</Label>
+                    <Input
+                      value={editingProduct.donViTinh}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, donViTinh: e.target.value })}
+                    />
+                  </div>
+                </div>
+              </section>
+
+              {/* Section 2: Tồn kho & giá */}
+              <section className="space-y-3">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Tồn kho &amp; giá
+                </div>
+                <div className="grid sm:grid-cols-3 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Tồn kho</Label>
+                    <Input
+                      type="number"
+                      className="h-11 text-base font-semibold"
+                      value={editingProduct.tonKho}
+                      onChange={(e) =>
+                        setEditingProduct({
+                          ...editingProduct,
+                          tonKho: Number(e.target.value),
+                          giaTriKho: Number(e.target.value) * editingProduct.giaVon,
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Giá vốn (VNĐ)</Label>
+                    <Input
+                      type="number"
+                      value={editingProduct.giaVon}
+                      onChange={(e) => {
+                        const giaVon = Number(e.target.value);
+                        setEditingProduct({
+                          ...editingProduct,
+                          giaVon,
+                          giaTriKho: giaVon * editingProduct.tonKho,
+                        });
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Giá trị kho</Label>
+                    <Input
+                      type="number"
+                      value={editingProduct.giaTriKho}
+                      disabled
+                      className="bg-muted font-semibold"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground rounded-md bg-muted/50 px-3 py-2">
+                  💡 Giá trị kho = Tồn kho × Giá vốn (tính tự động)
+                </p>
+              </section>
+            </div>
           )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
-              Hủy
+
+          <SheetFooter className="border-t p-4 sm:p-6 flex-row gap-2">
+            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)} className="flex-1">
+              Huỷ
             </Button>
-            <Button onClick={handleSaveEdit} className="bg-amber-600 hover:bg-amber-700 text-white">
-              <Pencil className="mr-2 h-4 w-4" />
-              Lưu thay đổi
+            <Button
+              onClick={handleSaveEdit}
+              disabled={busy}
+              className="flex-1 bg-amber-600 hover:bg-amber-700 text-white"
+            >
+              <Save className="mr-2 h-4 w-4" />
+              {busy ? 'Đang lưu...' : 'Lưu thay đổi'}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      {confirmDialog}
+
+      <PriceHistoryDialog
+        open={!!priceHistoryProduct}
+        onOpenChange={(o) => !o && setPriceHistoryProduct(null)}
+        product={priceHistoryProduct}
+      />
     </div>
   );
 }

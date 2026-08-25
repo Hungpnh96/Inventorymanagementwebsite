@@ -34,7 +34,9 @@ public class ExcelStore
 
     private static void WriteTransactionsHeader(IXLWorksheet ws)
     {
-        var headers = new[] { "Id", "ProductId", "MaSKU", "TenSanPham", "Type", "Quantity", "Date", "Note", "User" };
+        // Col 10 (UnitPrice) added for EPIC-005 backup/restore fidelity. Backward compatible:
+        // legacy files without the column read back as 0, exactly as before.
+        var headers = new[] { "Id", "ProductId", "MaSKU", "TenSanPham", "Type", "Quantity", "Date", "Note", "User", "UnitPrice" };
         for (int i = 0; i < headers.Length; i++) ws.Cell(1, i + 1).Value = headers[i];
     }
 
@@ -92,6 +94,7 @@ public class ExcelStore
                 TenSanPham: ws.Cell(r, 4).GetString(),
                 Type: ws.Cell(r, 5).GetString(),
                 Quantity: ws.Cell(r, 6).GetDouble(),
+                UnitPrice: TryNum(ws.Cell(r, 10)), // legacy xlsx has no col 10 → 0, backfilled by SQL migration
                 Date: date,
                 Note: ws.Cell(r, 8).GetString(),
                 User: ws.Cell(r, 9).GetString()
@@ -138,6 +141,7 @@ public class ExcelStore
                     ts.Cell(r, 7).Value = t.Date;
                     ts.Cell(r, 8).Value = t.Note ?? string.Empty;
                     ts.Cell(r, 9).Value = t.User;
+                    ts.Cell(r, 10).Value = t.UnitPrice;
                 }
                 wb.SaveAs(tmp);
             }

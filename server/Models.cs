@@ -18,6 +18,7 @@ public record Transaction(
     string TenSanPham,
     string Type,
     double Quantity,
+    double UnitPrice,
     DateTime Date,
     string? Note,
     string User
@@ -34,7 +35,22 @@ public record TransactionRequest(
     string Type,
     double Quantity,
     string? Note,
-    Product? NewProduct
+    Product? NewProduct,
+    /// <summary>
+    /// Optional unit price for import; if null server defaults to product's current gia_von.
+    /// Ignored for export (uses current WAC gia_von automatically).
+    /// </summary>
+    double? UnitPrice = null
+);
+
+public record PriceHistoryRow(
+    string Id,
+    DateTime Date,
+    string Type,
+    double Quantity,
+    double UnitPrice,
+    string? Note,
+    string User
 );
 
 public record LoginRequest(string Username, string Password);
@@ -50,6 +66,8 @@ public record LoginResponse(
 );
 
 public record ChangePasswordRequest(string OldPassword, string NewPassword);
+
+public record PasswordResetRequest(string Username, string? Reason);
 
 public record MeResponse(
     long Id,
@@ -108,3 +126,9 @@ public record AuditPageResponse(
     string? NextCursor,
     bool Truncated
 );
+
+// ---------------- EPIC-005 — Admin data module (clear / backup / restore) ----------------
+
+public record BackupInfo(string FileName, DateTime CreatedAt, long SizeBytes);
+
+public record ClearDataRequest(string ConfirmText);

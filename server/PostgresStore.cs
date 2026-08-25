@@ -33,6 +33,7 @@ public class PostgresStore
                    ten_san_pham AS TenSanPham,
                    type AS Type,
                    CAST(quantity AS double precision) AS Quantity,
+                   CAST(unit_price AS double precision) AS UnitPrice,
                    date AS Date,
                    note AS Note,
                    username AS User
@@ -137,13 +138,14 @@ public class PostgresStore
                 TenSanPham: input.TenSanPham,
                 Type: delta > 0 ? "import" : "export",
                 Quantity: Math.Abs(delta),
+                UnitPrice: input.GiaVon,
                 Date: DateTime.UtcNow,
                 Note: $"Điều chỉnh tồn kho từ Quản lý kho (cũ: {before.TonKho:0.###}, mới: {input.TonKho:0.###})",
                 User: actorUsername
             );
             await c.ExecuteAsync(@"
-                INSERT INTO transactions (id, product_id, ma_sku, ten_san_pham, type, quantity, date, note, username)
-                VALUES (@Id, @ProductId, @MaSKU, @TenSanPham, @Type, @Quantity, @Date, @Note, @User)",
+                INSERT INTO transactions (id, product_id, ma_sku, ten_san_pham, type, quantity, unit_price, date, note, username)
+                VALUES (@Id, @ProductId, @MaSKU, @TenSanPham, @Type, @Quantity, @UnitPrice, @Date, @Note, @User)",
                 adjustment, tx);
         }
 
@@ -175,18 +177,43 @@ public class PostgresStore
             FOR UPDATE", new { sku = body.MaSKU }, tx);
 
         string tenSanPham;
+        double unitPrice;
         if (existing.HasValue)
         {
             var (id, ton, gia, name) = existing.Value;
             double newStock = body.Type == "import" ? ton + body.Quantity : ton - body.Quantity;
             if (body.Type == "export" && body.Quantity > ton)
                 throw new InvalidOperationException("Số lượng xuất vượt quá tồn kho");
-            await c.ExecuteAsync(@"
-                UPDATE products
-                   SET ton_kho = @ton,
-                       gia_tri_kho = @ton * gia_von,
-                       updated_at = NOW()
-                 WHERE id = @id", new { ton = newStock, id }, tx);
+
+            if (body.Type == "import")
+            {
+                // Weighted Average Cost update: only when importing (buying at possibly-new price).
+                // Export uses current WAC (no recalc needed).
+                unitPrice = body.UnitPrice ?? gia;
+                double newGiaVon = newStock > 0
+                    ? (ton * gia + body.Quantity * unitPrice) / newStock
+                    : unitPrice;
+                await c.ExecuteAsync(@"
+                    UPDATE products
+                       SET ton_kho = @ton,
+                           gia_von = @gia,
+                           gia_tri_kho = @ton * @gia,
+                           updated_at = NOW()
+                     WHERE id = @id",
+                    new { ton = newStock, gia = newGiaVon, id }, tx);
+            }
+            else
+            {
+                // Export at current WAC
+                unitPrice = gia;
+                await c.ExecuteAsync(@"
+                    UPDATE products
+                       SET ton_kho = @ton,
+                           gia_tri_kho = @ton * gia_von,
+                           updated_at = NOW()
+                     WHERE id = @id",
+                    new { ton = newStock, id }, tx);
+            }
             tenSanPham = name;
         }
         else
@@ -195,6 +222,7 @@ public class PostgresStore
                 throw new InvalidOperationException("Sản phẩm không tồn tại trong kho");
             var np = body.NewProduct ?? new Product(0, "", body.MaSKU, body.TenSanPham, "", 0, 0, 0);
             double newStock = body.Quantity;
+            unitPrice = body.UnitPrice ?? np.GiaVon;
             await c.ExecuteAsync(@"
                 INSERT INTO products (stt, loai_hang, ma_sku, ten_san_pham, don_vi_tinh, ton_kho, gia_von, gia_tri_kho)
                 VALUES (
@@ -207,8 +235,8 @@ public class PostgresStore
                 name = body.TenSanPham,
                 dvt = np.DonViTinh ?? "",
                 ton = newStock,
-                gia = np.GiaVon,
-                gtk = newStock * np.GiaVon,
+                gia = unitPrice,
+                gtk = newStock * unitPrice,
             }, tx);
             tenSanPham = body.TenSanPham;
         }
@@ -220,23 +248,112 @@ public class PostgresStore
             TenSanPham: tenSanPham,
             Type: body.Type,
             Quantity: body.Quantity,
+            UnitPrice: unitPrice,
             Date: DateTime.UtcNow,
             Note: body.Note,
             User: username
         );
         await c.ExecuteAsync(@"
-            INSERT INTO transactions (id, product_id, ma_sku, ten_san_pham, type, quantity, date, note, username)
-            VALUES (@Id, @ProductId, @MaSKU, @TenSanPham, @Type, @Quantity, @Date, @Note, @User)",
+            INSERT INTO transactions (id, product_id, ma_sku, ten_san_pham, type, quantity, unit_price, date, note, username)
+            VALUES (@Id, @ProductId, @MaSKU, @TenSanPham, @Type, @Quantity, @UnitPrice, @Date, @Note, @User)",
             txn, tx);
 
         await tx.CommitAsync();
         return txn;
     }
 
+    public async Task<List<PriceHistoryRow>> GetPriceHistoryAsync(string sku)
+    {
+        using var c = await _db.OpenAsync();
+        var rows = (await c.QueryAsync<PriceHistoryRow>(@"
+            SELECT id AS Id,
+                   date AS Date,
+                   type AS Type,
+                   CAST(quantity AS double precision) AS Quantity,
+                   CAST(unit_price AS double precision) AS UnitPrice,
+                   note AS Note,
+                   username AS User
+              FROM transactions
+             WHERE ma_sku = @sku
+             ORDER BY date ASC", new { sku })).ToList();
+        return rows;
+    }
+
     public async Task<int> CountProductsAsync()
     {
         using var c = await _db.OpenAsync();
         return (int)(await c.ExecuteScalarAsync<long>("SELECT COUNT(*) FROM products"));
+    }
+
+    /// <summary>
+    /// EPIC-005 — wipe the inventory dataset so a demo instance can be handed off clean.
+    /// Touches ONLY products + transactions; users, user_permissions and audit_logs are preserved.
+    /// </summary>
+    public async Task ClearInventoryDataAsync()
+    {
+        using var c = await _db.OpenAsync();
+        using var tx = await c.BeginTransactionAsync();
+        await c.ExecuteAsync("DELETE FROM transactions", transaction: tx);
+        await c.ExecuteAsync("DELETE FROM products", transaction: tx);
+        await tx.CommitAsync();
+    }
+
+    /// <summary>
+    /// EPIC-005 — replace the whole inventory dataset with a backup snapshot, atomically.
+    /// Like <see cref="ClearInventoryDataAsync"/> this never touches auth or audit tables.
+    /// </summary>
+    public async Task RestoreInventoryAsync(InventoryData data)
+    {
+        using var c = await _db.OpenAsync();
+        using var tx = await c.BeginTransactionAsync();
+
+        await c.ExecuteAsync("DELETE FROM transactions", transaction: tx);
+        await c.ExecuteAsync("DELETE FROM products", transaction: tx);
+
+        int stt = 0;
+        foreach (var p in data.Products)
+        {
+            stt++;
+            await c.ExecuteAsync(@"
+                INSERT INTO products (stt, loai_hang, ma_sku, ten_san_pham, don_vi_tinh, ton_kho, gia_von, gia_tri_kho)
+                VALUES (@stt, @loai, @sku, @name, @dvt, @ton, @gia, @gtk)",
+                new
+                {
+                    stt,
+                    loai = p.LoaiHang ?? "",
+                    sku = p.MaSKU,
+                    name = p.TenSanPham,
+                    dvt = p.DonViTinh ?? "",
+                    ton = p.TonKho,
+                    gia = p.GiaVon,
+                    gtk = p.GiaTriKho,
+                }, tx);
+        }
+
+        foreach (var t in data.Transactions)
+        {
+            // transactions.id is a TEXT primary key with no DB-side default, so a value is
+            // always required. Snapshot ids are reused when present; blanks get a fresh one.
+            var id = string.IsNullOrWhiteSpace(t.Id) ? Guid.NewGuid().ToString("N") : t.Id;
+            await c.ExecuteAsync(@"
+                INSERT INTO transactions (id, product_id, ma_sku, ten_san_pham, type, quantity, unit_price, date, note, username)
+                VALUES (@id, @productId, @sku, @name, @type, @quantity, @unitPrice, @date, @note, @username)",
+                new
+                {
+                    id,
+                    productId = t.ProductId ?? t.MaSKU,
+                    sku = t.MaSKU,
+                    name = t.TenSanPham,
+                    type = t.Type,
+                    quantity = t.Quantity,
+                    unitPrice = t.UnitPrice,
+                    date = t.Date,
+                    note = t.Note,
+                    username = t.User,
+                }, tx);
+        }
+
+        await tx.CommitAsync();
     }
 
     public async Task<string?> GetMigrationStateAsync(string key)

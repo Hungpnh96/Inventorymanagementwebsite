@@ -1,11 +1,104 @@
-import { useMemo } from 'react';
+import { useMemo, type ComponentType } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { InventoryData } from '../types';
-import { Package, TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
-import { stockStatusFromValue, STOCK_COLOR, STOCK_LABEL, TX_COLOR, STOCK_LOW_THRESHOLD } from '../design';
+import {
+  Package,
+  Warehouse,
+  Wallet,
+  AlertTriangle,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  Activity,
+  PieChart as PieChartIcon,
+} from 'lucide-react';
+import { cn } from './ui/utils';
+import { InOutChart } from './charts/InOutChart';
+import { CategoryDonut } from './charts/CategoryDonut';
+import { EmptyState } from './ui-ext/EmptyState';
 
 interface DashboardProps {
   data: InventoryData;
+}
+
+const STOCK_LOW_THRESHOLD = 10;
+
+interface KpiSpec {
+  key: string;
+  label: string;
+  value: string | number;
+  caption?: string;
+  icon: ComponentType<{ className?: string }>;
+  tone: 'brand' | 'success' | 'warn' | 'danger' | 'info' | 'neutral';
+  trend?: { delta: number; suffix?: string };
+}
+
+const TONE_RING: Record<KpiSpec['tone'], string> = {
+  brand: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300',
+  success: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300',
+  warn: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300',
+  danger: 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300',
+  info: 'bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300',
+  neutral: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+};
+const TONE_ACCENT: Record<KpiSpec['tone'], string> = {
+  brand: 'border-l-indigo-500',
+  success: 'border-l-emerald-500',
+  warn: 'border-l-amber-500',
+  danger: 'border-l-rose-500',
+  info: 'border-l-sky-500',
+  neutral: 'border-l-slate-400',
+};
+
+function KpiCard({ kpi }: { kpi: KpiSpec }) {
+  const Icon = kpi.icon;
+  const TrendIcon = kpi.trend
+    ? kpi.trend.delta > 0
+      ? TrendingUp
+      : kpi.trend.delta < 0
+        ? TrendingDown
+        : Minus
+    : null;
+  const trendColor = kpi.trend
+    ? kpi.trend.delta > 0
+      ? 'text-emerald-600 dark:text-emerald-400'
+      : kpi.trend.delta < 0
+        ? 'text-rose-600 dark:text-rose-400'
+        : 'text-muted-foreground'
+    : '';
+  return (
+    <Card
+      className={cn(
+        'border-l-4 transition-all hover:-translate-y-0.5 hover:shadow-md',
+        TONE_ACCENT[kpi.tone],
+      )}
+    >
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="text-xs font-medium text-muted-foreground tracking-wide uppercase">
+          {kpi.label}
+        </CardTitle>
+        <div className={cn('rounded-md p-1.5', TONE_RING[kpi.tone])}>
+          <Icon className="h-4 w-4" />
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="text-2xl font-bold tracking-tight">{kpi.value}</div>
+        <div className="mt-1 flex items-center gap-2 text-xs">
+          {kpi.caption && <span className="text-muted-foreground">{kpi.caption}</span>}
+          {kpi.trend && TrendIcon && (
+            <span className={cn('inline-flex items-center gap-0.5 font-semibold', trendColor)}>
+              <TrendIcon className="h-3 w-3" />
+              {kpi.trend.delta > 0 ? '+' : ''}
+              {kpi.trend.delta}
+              {kpi.trend.suffix ?? ''}
+            </span>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 export function Dashboard({ data }: DashboardProps) {
@@ -13,172 +106,256 @@ export function Dashboard({ data }: DashboardProps) {
     const totalProducts = data.products.length;
     const totalValue = data.products.reduce((sum, p) => sum + p.giaTriKho, 0);
     const totalStock = data.products.reduce((sum, p) => sum + p.tonKho, 0);
+    const lowStock = data.products.filter((p) => p.tonKho < STOCK_LOW_THRESHOLD);
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const todayTransactions = data.transactions.filter(t => {
-      const tDate = new Date(t.date);
-      tDate.setHours(0, 0, 0, 0);
-      return tDate.getTime() === today.getTime();
+    const todayTxns = data.transactions.filter((t) => {
+      const d = new Date(t.date);
+      d.setHours(0, 0, 0, 0);
+      return d.getTime() === today.getTime();
     });
-
-    const todayImports = todayTransactions
-      .filter(t => t.type === 'import')
-      .reduce((sum, t) => sum + t.quantity, 0);
-
-    const todayExports = todayTransactions
-      .filter(t => t.type === 'export')
-      .reduce((sum, t) => sum + t.quantity, 0);
+    const todayImports = todayTxns.filter((t) => t.type === 'import').reduce((s, t) => s + t.quantity, 0);
+    const todayExports = todayTxns.filter((t) => t.type === 'export').reduce((s, t) => s + t.quantity, 0);
+    const todayImportCount = todayTxns.filter((t) => t.type === 'import').length;
+    const todayExportCount = todayTxns.filter((t) => t.type === 'export').length;
 
     return {
       totalProducts,
       totalValue,
       totalStock,
+      lowStock,
       todayImports,
       todayExports,
+      todayImportCount,
+      todayExportCount,
     };
   }, [data]);
 
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('vi-VN', {
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat('vi-VN', {
       style: 'currency',
       currency: 'VND',
+      notation: value > 1_000_000 ? 'compact' : 'standard',
+      maximumFractionDigits: 1,
     }).format(value);
-  };
+
+  const kpis: KpiSpec[] = [
+    {
+      key: 'products',
+      label: 'Tổng sản phẩm',
+      value: stats.totalProducts,
+      caption: 'Mã SKU',
+      icon: Package,
+      tone: 'brand',
+    },
+    {
+      key: 'stock',
+      label: 'Tổng tồn kho',
+      value: stats.totalStock.toLocaleString('vi-VN'),
+      caption: 'Đơn vị',
+      icon: Warehouse,
+      tone: 'success',
+    },
+    {
+      key: 'value',
+      label: 'Giá trị kho',
+      value: formatCurrency(stats.totalValue),
+      caption: 'Tổng giá vốn',
+      icon: Wallet,
+      tone: 'info',
+    },
+    {
+      key: 'low',
+      label: 'Hàng sắp hết',
+      value: stats.lowStock.length,
+      caption: `< ${STOCK_LOW_THRESHOLD} đơn vị`,
+      icon: AlertTriangle,
+      tone: stats.lowStock.length > 0 ? 'danger' : 'neutral',
+    },
+    {
+      key: 'in',
+      label: 'Nhập hôm nay',
+      value: stats.todayImports,
+      caption: `${stats.todayImportCount} phiếu`,
+      icon: ArrowDownToLine,
+      tone: 'success',
+      trend: stats.todayImports > 0 ? { delta: stats.todayImports } : undefined,
+    },
+    {
+      key: 'out',
+      label: 'Xuất hôm nay',
+      value: stats.todayExports,
+      caption: `${stats.todayExportCount} phiếu`,
+      icon: ArrowUpFromLine,
+      tone: 'warn',
+      trend: stats.todayExports > 0 ? { delta: -stats.todayExports } : undefined,
+    },
+  ];
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Dashboard</h2>
-        <p className="text-sm sm:text-base text-muted-foreground">Tổng quan hệ thống quản lý kho</p>
+        <p className="text-sm text-muted-foreground">Tổng quan kho · cập nhật theo thời gian thực</p>
       </div>
 
-      <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
-        {/* EPIC-002-AC40: each KPI card has a distinct accent color, WCAG AA contrast preserved */}
-        <Card className="border-l-4 border-l-indigo-500 bg-gradient-to-br from-indigo-50 to-white">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-indigo-900">Tổng sản phẩm</CardTitle>
-            <div className="rounded-md bg-indigo-100 p-1.5">
-              <Package className="h-4 w-4 text-indigo-700" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-indigo-900">{stats.totalProducts}</div>
-            <p className="text-xs text-muted-foreground">Loại sản phẩm</p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-l-4 border-l-emerald-500 bg-gradient-to-br from-emerald-50 to-white">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-emerald-900">Tổng tồn kho</CardTitle>
-            <div className="rounded-md bg-emerald-100 p-1.5">
-              <Package className="h-4 w-4 text-emerald-700" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-emerald-900">{stats.totalStock}</div>
-            <p className="text-xs text-muted-foreground">Đơn vị</p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-l-4 border-l-amber-500 bg-gradient-to-br from-amber-50 to-white">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-amber-900">Giá trị kho</CardTitle>
-            <div className="rounded-md bg-amber-100 p-1.5">
-              <DollarSign className="h-4 w-4 text-amber-700" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-amber-900">{formatCurrency(stats.totalValue)}</div>
-            <p className="text-xs text-muted-foreground">Tổng giá trị</p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-l-4 border-l-purple-500 bg-gradient-to-br from-purple-50 to-white">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-purple-900">Giao dịch hôm nay</CardTitle>
-            <div className="rounded-md bg-purple-100 p-1.5">
-              <TrendingUp className="h-4 w-4 text-purple-700" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <TrendingUp className="h-3 w-3 text-emerald-700" />
-                <span className="text-sm text-purple-900">Nhập: {stats.todayImports}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <TrendingDown className="h-3 w-3 text-rose-700" />
-                <span className="text-sm text-purple-900">Xuất: {stats.todayExports}</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* KPI grid: 2col mobile / 3col tablet / 6col desktop */}
+      <div className="grid gap-3 sm:gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+        {kpis.map((k) => (
+          <KpiCard key={k.key} kpi={k} />
+        ))}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      {/* Charts row */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Activity className="h-4 w-4 text-indigo-600" />
+                Nhập / Xuất 14 ngày
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">Tổng lượng theo ngày</p>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {data.transactions.length === 0 ? (
+              <EmptyState
+                compact
+                icon={Activity}
+                title="Chưa có giao dịch"
+                description="Số liệu sẽ hiển thị sau khi có nhập/xuất kho"
+              />
+            ) : (
+              <InOutChart transactions={data.transactions} days={14} />
+            )}
+          </CardContent>
+        </Card>
+
         <Card>
-          <CardHeader>
-            <CardTitle>Sản phẩm tồn kho thấp</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <PieChartIcon className="h-4 w-4 text-indigo-600" />
+              Cơ cấu giá trị
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">Theo loại hàng</p>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {data.products
-                .filter(p => p.tonKho < STOCK_LOW_THRESHOLD)
-                .slice(0, 5)
-                .map((product) => {
-                  const status = stockStatusFromValue(product.tonKho);
-                  return (
-                    <div key={product.maSKU} className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium">{product.tenSanPham}</p>
-                        <p className="text-xs text-muted-foreground">{product.maSKU}</p>
+            <CategoryDonut products={data.products} />
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* 2-column section */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        {/* Low stock list */}
+        <Card className="lg:col-span-2">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <div>
+              <CardTitle className="text-base">Hàng sắp hết</CardTitle>
+              <p className="text-xs text-muted-foreground">Dưới ngưỡng {STOCK_LOW_THRESHOLD} đơn vị</p>
+            </div>
+            <span className="rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-semibold text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
+              {stats.lowStock.length}
+            </span>
+          </CardHeader>
+          <CardContent>
+            {stats.lowStock.length === 0 ? (
+              <div className="py-8 text-center text-sm text-muted-foreground">
+                Không có sản phẩm tồn kho thấp 🎉
+              </div>
+            ) : (
+              <ul className="divide-y">
+                {stats.lowStock.slice(0, 6).map((p) => (
+                  <li key={p.maSKU} className="flex items-center justify-between py-2.5">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs text-indigo-600 dark:text-indigo-400">{p.maSKU}</span>
+                        {p.loaiHang && (
+                          <span className="text-[10px] rounded bg-slate-100 px-1.5 py-0.5 dark:bg-slate-800">
+                            {p.loaiHang}
+                          </span>
+                        )}
                       </div>
-                      <span
-                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${STOCK_COLOR[status]}`}
-                        title={STOCK_LABEL[status]}
-                      >
-                        {product.tonKho} {product.donViTinh}
-                      </span>
-                    </div>
-                  );
-                })}
-              {data.products.filter(p => p.tonKho < STOCK_LOW_THRESHOLD).length === 0 && (
-                <p className="text-sm text-muted-foreground">Không có sản phẩm tồn kho thấp</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Giao dịch gần đây</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {data.transactions
-                .slice(-5)
-                .reverse()
-                .map((transaction) => (
-                  <div key={transaction.id} className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium">{transaction.tenSanPham}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(transaction.date).toLocaleDateString('vi-VN')}
-                      </p>
+                      <div className="truncate text-sm font-medium">{p.tenSanPham}</div>
                     </div>
                     <span
-                      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-sm font-semibold ${TX_COLOR[transaction.type]}`}
+                      className={cn(
+                        'shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold',
+                        p.tonKho === 0
+                          ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300'
+                          : 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
+                      )}
                     >
-                      {transaction.type === 'import' ? '+' : '-'}{transaction.quantity}
+                      {p.tonKho} {p.donViTinh}
                     </span>
-                  </div>
+                  </li>
                 ))}
-              {data.transactions.length === 0 && (
-                <p className="text-sm text-muted-foreground">Chưa có giao dịch nào</p>
-              )}
-            </div>
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Recent activity */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Hoạt động gần đây</CardTitle>
+            <p className="text-xs text-muted-foreground">{data.transactions.length} giao dịch</p>
+          </CardHeader>
+          <CardContent>
+            {data.transactions.length === 0 ? (
+              <div className="py-8 text-center text-sm text-muted-foreground">Chưa có giao dịch</div>
+            ) : (
+              <ul className="space-y-2.5">
+                {data.transactions
+                  .slice()
+                  .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                  .slice(0, 6)
+                  .map((t) => (
+                    <li key={t.id} className="flex items-start gap-3">
+                      <span
+                        className={cn(
+                          'mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full',
+                          t.type === 'import'
+                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
+                            : 'bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300',
+                        )}
+                      >
+                        {t.type === 'import' ? (
+                          <ArrowDownToLine className="h-3.5 w-3.5" />
+                        ) : (
+                          <ArrowUpFromLine className="h-3.5 w-3.5" />
+                        )}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium">{t.tenSanPham}</div>
+                        <div className="text-[11px] text-muted-foreground">
+                          {new Date(t.date).toLocaleString('vi-VN', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}{' '}
+                          • {t.user}
+                        </div>
+                      </div>
+                      <span
+                        className={cn(
+                          'shrink-0 text-sm font-bold',
+                          t.type === 'import'
+                            ? 'text-emerald-700 dark:text-emerald-400'
+                            : 'text-orange-700 dark:text-orange-400',
+                        )}
+                      >
+                        {t.type === 'import' ? '+' : '-'}
+                        {t.quantity}
+                      </span>
+                    </li>
+                  ))}
+              </ul>
+            )}
           </CardContent>
         </Card>
       </div>

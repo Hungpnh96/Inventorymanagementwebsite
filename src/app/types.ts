@@ -16,7 +16,18 @@ export interface Transaction {
   tenSanPham: string;
   type: 'import' | 'export';
   quantity: number;
+  unitPrice: number;
   date: Date;
+  note?: string;
+  user: string;
+}
+
+export interface PriceHistoryRow {
+  id: string;
+  date: Date;
+  type: 'import' | 'export';
+  quantity: number;
+  unitPrice: number;
   note?: string;
   user: string;
 }

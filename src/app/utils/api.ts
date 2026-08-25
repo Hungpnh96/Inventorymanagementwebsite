@@ -211,6 +211,15 @@ export async function adminQueryAudit(params: Partial<{ from: string; to: string
   return normalize(await res.json());
 }
 
+export async function requestPasswordReset(username: string, reason: string): Promise<void> {
+  const res = await fetch(`${BASE}/auth/password-reset-request`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, reason }),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+}
+
 export async function changePassword(oldPassword: string, newPassword: string): Promise<void> {
   const res = await fetch(`${BASE}/auth/change-password`, {
     method: 'POST',
@@ -289,6 +298,15 @@ export async function updateProduct(
   };
 }
 
+export async function fetchPriceHistory(sku: string): Promise<import('../types').PriceHistoryRow[]> {
+  const res = await fetch(`${BASE}/products/${encodeURIComponent(sku)}/price-history`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  const raw = normalize<any[]>(await res.json());
+  return raw.map((r) => ({ ...r, date: new Date(r.date) }));
+}
+
 export async function postTransaction(
   _user: User,
   payload: {
@@ -298,6 +316,7 @@ export async function postTransaction(
     quantity: number;
     note?: string;
     newProduct?: Product;
+    unitPrice?: number;
   },
 ): Promise<{ transaction: Transaction; data: InventoryData }> {
   const res = await fetch(`${BASE}/transactions`, {
@@ -311,4 +330,66 @@ export async function postTransaction(
     transaction: { ...normalize(json.transaction), date: new Date(json.transaction.date ?? json.transaction.Date) },
     data: reviveDates(normalize(json.data)),
   };
+}
+
+// ---------- Admin data management (clear + backups) ----------
+
+export interface BackupInfo {
+  fileName: string;
+  createdAt: string; // ISO
+  sizeBytes: number;
+}
+
+export async function adminListBackups(): Promise<BackupInfo[]> {
+  const res = await fetch(`${BASE}/admin/data/backups`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(await readError(res));
+  return normalize<BackupInfo[]>(await res.json());
+}
+
+export async function adminClearData(confirmText: string): Promise<{ backupFile: string; data: InventoryData }> {
+  const res = await fetch(`${BASE}/admin/data/clear`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ confirmText }),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  const body = normalize<any>(await res.json());
+  return { backupFile: body.backupFile, data: reviveDates(body.data) };
+}
+
+export async function adminRestoreBackup(
+  fileName: string,
+): Promise<{ restoredFrom: string; safetyBackup: string; data: InventoryData }> {
+  const res = await fetch(`${BASE}/admin/data/backups/${encodeURIComponent(fileName)}/restore`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  const body = normalize<any>(await res.json());
+  return {
+    restoredFrom: body.restoredFrom,
+    safetyBackup: body.safetyBackup,
+    data: reviveDates(body.data),
+  };
+}
+
+export function adminBackupDownloadUrl(fileName: string): string {
+  return `${BASE}/admin/data/backups/${encodeURIComponent(fileName)}/download`;
+}
+
+/**
+ * Download a backup .xlsx. Auth here is a Bearer token (not a cookie), so a plain
+ * anchor href would hit the endpoint unauthenticated — fetch it with headers and
+ * hand the browser a blob URL instead.
+ */
+export async function adminDownloadBackup(fileName: string): Promise<void> {
+  const res = await fetch(adminBackupDownloadUrl(fileName), { headers: authHeaders() });
+  if (!res.ok) throw new Error(await readError(res));
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  a.click();
+  URL.revokeObjectURL(url);
 }

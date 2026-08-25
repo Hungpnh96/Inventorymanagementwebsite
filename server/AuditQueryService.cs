@@ -66,15 +66,17 @@ public sealed class AuditQueryService
         var truncated = false;
         if (!f.Cursor.HasValue)
         {
+            // Explicit casts prevent Postgres 42P08 (could not determine data type)
+            // when Dapper sends nullable parameters.
             var probeSql = @"SELECT EXISTS (
                 SELECT 1 FROM audit_logs
                  WHERE 1=1
-                   AND (@from IS NULL OR at >= @from)
-                   AND (@to IS NULL OR at <= @to)
-                   AND (@actor IS NULL OR actor_username = @actor)
-                   AND (@action IS NULL OR action = @action)
-                   AND (@rtype IS NULL OR resource_type = @rtype)
-                   AND (@rid IS NULL OR resource_id = @rid)
+                   AND (CAST(@from AS timestamptz) IS NULL OR at >= CAST(@from AS timestamptz))
+                   AND (CAST(@to AS timestamptz) IS NULL OR at <= CAST(@to AS timestamptz))
+                   AND (CAST(@actor AS text) IS NULL OR actor_username = CAST(@actor AS text))
+                   AND (CAST(@action AS text) IS NULL OR action = CAST(@action AS text))
+                   AND (CAST(@rtype AS text) IS NULL OR resource_type = CAST(@rtype AS text))
+                   AND (CAST(@rid AS text) IS NULL OR resource_id = CAST(@rid AS text))
                 OFFSET @threshold
                 LIMIT 1)";
             truncated = await c.ExecuteScalarAsync<bool>(probeSql, new

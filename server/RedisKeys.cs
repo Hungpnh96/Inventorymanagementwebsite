@@ -24,6 +24,7 @@ public static class AuditActions
     public const string Logout = "logout";
     public const string PasswordChange = "password.change";
     public const string PasswordReset = "password.reset";
+    public const string PasswordResetRequest = "password.reset_request";
 
     public const string ProductImport = "product.import";
     public const string ProductReplace = "product.replace";
@@ -36,4 +37,8 @@ public static class AuditActions
     public const string UserDelete = "user.delete";
     public const string UserPermissionsUpdate = "user.permissions.update";
     public const string UserLogoutAll = "user.logout_all";
+
+    public const string DataClear = "data.clear";
+    public const string DataRestore = "data.restore";
+    public const string DataBackupCreate = "data.backup.create";
 }
